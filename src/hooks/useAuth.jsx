@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../config/firebase';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
@@ -18,6 +18,24 @@ export function AuthProvider({ children }) {
         const profileDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
         if (profileDoc.exists()) {
           setUserProfile(profileDoc.data());
+        } else {
+          // No profile yet - check if this email is linked to a counselor
+          const emailKey = firebaseUser.email.toLowerCase().replace(/[.]/g, '_');
+          const linkDoc = await getDoc(doc(db, 'counseleeLinks', emailKey));
+          if (linkDoc.exists()) {
+            // Auto-create counselee profile
+            const linkData = linkDoc.data();
+            const newProfile = {
+              email: firebaseUser.email,
+              name: linkData.name,
+              role: 'counselee',
+              counselorId: linkData.counselorId,
+              counseleeDocId: linkData.counseleeDocId,
+              createdAt: new Date()
+            };
+            await setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
+            setUserProfile(newProfile);
+          }
         }
       } else {
         setUser(null);
@@ -33,6 +51,10 @@ export function AuthProvider({ children }) {
     return signInWithEmailAndPassword(auth, email, password);
   };
 
+  const signup = async (email, password) => {
+    return createUserWithEmailAndPassword(auth, email, password);
+  };
+
   const logout = async () => {
     return signOut(auth);
   };
@@ -42,6 +64,7 @@ export function AuthProvider({ children }) {
     userProfile,
     loading,
     login,
+    signup,
     logout,
     isCounselor: userProfile?.role === 'counselor',
     isCounselee: userProfile?.role === 'counselee',

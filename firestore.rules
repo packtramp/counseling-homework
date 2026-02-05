@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      // Users can read/write their own profile
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Counselees can read their counselor's profile (for contact info)
+      allow read: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counselorId == userId;
+      // Counselors can create/delete profiles for their counselees
+      allow create: if request.auth != null && request.resource.data.counselorId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.counselorId == request.auth.uid;
+    }
+
+    // Counselee email links - counselors can write, anyone can read their own
+    match /counseleeLinks/{emailKey} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Counselor data - counselor can access their own counselees
+    match /counselors/{counselorId}/counselees/{counseleeId} {
+      allow read, write: if request.auth != null && request.auth.uid == counselorId;
+      // Counselee can read and update their own record (for photo, name, etc.)
+      allow read, update: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counselorId == counselorId &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counseleeDocId == counseleeId;
+    }
+
+    // Homework - counselor full access, counselee read + update + create + delete
+    match /counselors/{counselorId}/counselees/{counseleeId}/homework/{homeworkId} {
+      allow read, write: if request.auth != null && request.auth.uid == counselorId;
+      allow read, create, update, delete: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counselorId == counselorId &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counseleeDocId == counseleeId;
+    }
+
+    // Heart Journals - counselor full access, counselee can create, read, and update own
+    match /counselors/{counselorId}/counselees/{counseleeId}/heartJournals/{journalId} {
+      allow read, write: if request.auth != null && request.auth.uid == counselorId;
+      allow read, create, update: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counselorId == counselorId &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counseleeDocId == counseleeId;
+    }
+
+    // Think Lists - counselor full access, counselee can read, create, update, delete
+    match /counselors/{counselorId}/counselees/{counseleeId}/thinkLists/{listId} {
+      allow read, write: if request.auth != null && request.auth.uid == counselorId;
+      allow read, create, update, delete: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counselorId == counselorId &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counseleeDocId == counseleeId;
+    }
+
+    // Journals - counselor full access, counselee can read, create, update, delete
+    match /counselors/{counselorId}/counselees/{counseleeId}/journals/{journalId} {
+      allow read, write: if request.auth != null && request.auth.uid == counselorId;
+      allow read, create, update, delete: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counselorId == counselorId &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counseleeDocId == counseleeId;
+    }
+
+    // Session Notes - counselor full access, counselee can read and add their own notes
+    match /counselors/{counselorId}/counselees/{counseleeId}/sessions/{sessionId} {
+      allow read, write: if request.auth != null && request.auth.uid == counselorId;
+      allow read, update: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counselorId == counselorId &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counseleeDocId == counseleeId;
+    }
+
+    // Activity Log - counselor full access, counselee can read and create
+    match /counselors/{counselorId}/counselees/{counseleeId}/activityLog/{logId} {
+      allow read, write: if request.auth != null && request.auth.uid == counselorId;
+      allow read, create: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counselorId == counselorId &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counseleeDocId == counseleeId;
+    }
+  }
+}

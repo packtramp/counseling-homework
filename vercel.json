@@ -1,0 +1,11 @@
+{
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/midnight-reset",
+      "schedule": "0 6 * * *"
+    }
+  ]
+}
