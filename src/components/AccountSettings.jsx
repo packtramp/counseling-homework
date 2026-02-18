@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { auth } from '../config/firebase';
 import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import ProfilePhoto from './ProfilePhoto';
+import RichTextEditor from './RichTextEditor';
+import { downloadCounseleeData } from '../utils/generatePDF';
 
 /**
  * Account Settings Panel
@@ -45,20 +47,21 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
   };
   const [reminderSchedule, setReminderSchedule] = useState(userProfile?.reminderSchedule || defaultSchedule);
 
+  // Session template (counselor only)
+  const [sessionTemplate, setSessionTemplate] = useState(userProfile?.sessionTemplate || '');
+
+  // PDF download state
+  const [downloading, setDownloading] = useState(false);
+
   // Sync state when userProfile prop changes (e.g., when modal reopens)
   useEffect(() => {
-    console.log('AccountSettings: userProfile changed', {
-      phone: userProfile?.phone,
-      smsReminders: userProfile?.smsReminders,
-      emailReminders: userProfile?.emailReminders,
-      reminderSchedule: userProfile?.reminderSchedule
-    });
     setName(userProfile?.name || '');
     setPhone(userProfile?.phone || '');
     setSmsReminders(userProfile?.smsReminders ?? false);
     setEmailReminders(userProfile?.emailReminders ?? false);
     setReminderSchedule(userProfile?.reminderSchedule || defaultSchedule);
-  }, [userProfile?.phone, userProfile?.smsReminders, userProfile?.emailReminders, userProfile?.reminderSchedule]);
+    setSessionTemplate(userProfile?.sessionTemplate || '');
+  }, [userProfile?.phone, userProfile?.smsReminders, userProfile?.emailReminders, userProfile?.reminderSchedule, userProfile?.sessionTemplate]);
 
   // Parse user-typed time into HH:MM format
   const parseTime = (input) => {
@@ -216,14 +219,26 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
           >
             Password
           </button>
-          {role === 'counselee' && (
+          <button
+            className={`settings-tab ${activeTab === 'reminders' ? 'active' : ''}`}
+            onClick={() => setActiveTab('reminders')}
+          >
+            Reminders
+          </button>
+          {role === 'counselor' && (
             <button
-              className={`settings-tab ${activeTab === 'reminders' ? 'active' : ''}`}
-              onClick={() => setActiveTab('reminders')}
+              className={`settings-tab ${activeTab === 'template' ? 'active' : ''}`}
+              onClick={() => setActiveTab('template')}
             >
-              Reminders
+              Session Template
             </button>
           )}
+          <button
+            className={`settings-tab ${activeTab === 'download' ? 'active' : ''}`}
+            onClick={() => setActiveTab('download')}
+          >
+            My Data
+          </button>
         </div>
 
         <div className="settings-content">
@@ -335,7 +350,7 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
             </form>
           )}
 
-          {activeTab === 'reminders' && role === 'counselee' && (
+          {activeTab === 'reminders' && (
             <form onSubmit={async (e) => {
               e.preventDefault();
               setError(null);
@@ -444,6 +459,74 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
               </button>
             </form>
           )}
+
+          {activeTab === 'template' && role === 'counselor' && (
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setError(null);
+              setSuccess(null);
+              setSaving(true);
+              try {
+                if (onUpdateProfile) {
+                  await onUpdateProfile({ sessionTemplate });
+                }
+                setSuccess('Session template saved!');
+              } catch (err) {
+                setError(err.message);
+              } finally {
+                setSaving(false);
+              }
+            }}>
+              <div className="form-group">
+                <label>Session Notes Template</label>
+                <small className="form-hint" style={{ marginBottom: '8px', display: 'block' }}>
+                  Create a template with questions or sections. This will pre-populate when you create a new session.
+                </small>
+                <RichTextEditor
+                  content={sessionTemplate}
+                  onChange={setSessionTemplate}
+                  placeholder="Enter your session template here... e.g., Opening Questions, Progress Review, New Assignments, Prayer Requests..."
+                />
+              </div>
+              <button type="submit" className="save-btn" disabled={saving}>
+                {saving ? 'Saving...' : 'Save Template'}
+              </button>
+            </form>
+          )}
+
+          {activeTab === 'download' && (
+            <div>
+              <p style={{ fontSize: '0.9rem', color: '#4a5568', marginBottom: 16, lineHeight: 1.5 }}>
+                Download all your counseling data as a PDF file including homework, journals, think lists, heart journal entries, and activity history.
+              </p>
+              <button
+                className="save-btn"
+                disabled={downloading}
+                onClick={async () => {
+                  setError(null);
+                  setDownloading(true);
+                  try {
+                    const cId = userProfile?.counselorId || userProfile?.uid;
+                    const cDocId = userProfile?.counseleeDocId || userProfile?.uid;
+                    await downloadCounseleeData(cId, cDocId, userProfile?.name || 'Unknown');
+                    setSuccess('PDF downloaded!');
+                  } catch (err) {
+                    console.error('PDF generation error:', err);
+                    setError('PDF error: ' + (err.message || String(err)));
+                  } finally {
+                    setDownloading(false);
+                  }
+                }}
+              >
+                {downloading ? 'Generating PDF...' : 'Download My Data'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: '8px 16px 12px', borderTop: '1px solid #e2e8f0', textAlign: 'center' }}>
+          <a href="/tos" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: '#718096', marginRight: 12 }}>Terms of Service</a>
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: '#718096' }}>Privacy Policy</a>
         </div>
       </div>
     </div>

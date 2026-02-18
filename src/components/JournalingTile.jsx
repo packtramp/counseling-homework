@@ -3,7 +3,7 @@
  *
  * Props:
  * - journals: array of journal entries
- * - role: 'counselee' | 'counselor'
+ * - role: 'counselee' | 'counselor' | 'accountability'
  * - onView: (journal) => void - called when viewing a journal
  * - onAdd: () => void - called when adding new
  */
@@ -13,6 +13,7 @@ export default function JournalingTile({
   onView,
   onAdd
 }) {
+  const canEdit = role === 'counselee' || role === 'counselor'; // Accountability is read-only
   const formatDate = (timestamp) => {
     if (!timestamp) return 'No date';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -25,7 +26,7 @@ export default function JournalingTile({
         <span className="jn-tile-title">
           Journaling ({journals.length})
         </span>
-        {onAdd && (
+        {canEdit && onAdd && (
           <button className="jn-add-btn" onClick={onAdd} title="New Journal Entry">
             {/* Blue square with open book icon */}
             <svg viewBox="0 0 24 24" width="24" height="24">

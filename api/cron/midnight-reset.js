@@ -32,13 +32,9 @@ const db = admin.apps.length ? admin.firestore() : null;
  * Midnight cron job - runs daily at midnight (America/Chicago timezone)
  *
  * Current functionality:
- * - Logs daily run
  * - Updates "behindCount" on counselee documents for denormalized display
- *
- * Future functionality:
- * - Send missed homework notifications
- * - Update streak counts
- * - Generate daily summary emails
+ * - Updates "currentStreak" on counselee documents (not behind = +1, behind = reset to 0)
+ * - Logs red days to activityLog for historical tracking
  */
 export default async function handler(req, res) {
   // Verify this is a cron request from Vercel
@@ -59,6 +55,7 @@ export default async function handler(req, res) {
     const counselorsSnap = await db.collection('counselors').get();
     let counseleesProcessed = 0;
     let behindUpdates = 0;
+    let redDaysLogged = 0;
 
     for (const counselorDoc of counselorsSnap.docs) {
       const counselorId = counselorDoc.id;
@@ -118,25 +115,44 @@ export default async function handler(req, res) {
           }
         }
 
-        // Update counselee document with behind count
+        // Update streak: not behind = +1, behind = reset to 0
         const currentData = counseleeDoc.data();
-        if (currentData.behindCount !== behindCount) {
+        const currentStreak = currentData.currentStreak || 0;
+        const hasActiveHomework = homeworkSnap.docs.some(d => d.data().status === 'active');
+        const newStreak = !hasActiveHomework ? currentStreak : (behindCount > 0 ? 0 : currentStreak + 1);
+
+        // Update counselee document with behind count and streak
+        if (currentData.behindCount !== behindCount || currentData.currentStreak !== newStreak) {
           await db.doc(`counselors/${counselorId}/counselees/${counseleeId}`).update({
             behindCount: behindCount,
+            currentStreak: newStreak,
             lastBehindCheck: admin.firestore.FieldValue.serverTimestamp()
           });
           behindUpdates++;
         }
+
+        // Log red days to activity history for historical tracking
+        if (behindCount > 0 && hasActiveHomework) {
+          await db.collection(`counselors/${counselorId}/counselees/${counseleeId}/activityLog`).add({
+            type: 'red_day',
+            behindCount: behindCount,
+            streakReset: currentStreak > 0,
+            previousStreak: currentStreak,
+            timestamp: admin.firestore.FieldValue.serverTimestamp()
+          });
+          redDaysLogged++;
+        }
       }
     }
 
-    console.log(`Midnight cron complete: ${counseleesProcessed} counselees processed, ${behindUpdates} behind counts updated`);
+    console.log(`Midnight cron complete: ${counseleesProcessed} counselees processed, ${behindUpdates} behind counts updated, ${redDaysLogged} red days logged`);
 
     return res.status(200).json({
       success: true,
       timestamp: new Date().toISOString(),
       counseleesProcessed,
-      behindUpdates
+      behindUpdates,
+      redDaysLogged
     });
   } catch (error) {
     console.error('Midnight cron error:', error);

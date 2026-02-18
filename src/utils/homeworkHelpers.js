@@ -88,7 +88,9 @@ export const getWeeklyProgress = (item, now = new Date()) => {
   }
 
   // Week 1 pro-rate: assignment night doesn't count as a full day
-  const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, 6) : weeklyTarget;
+  // Scale cap by dailyCap so Think Lists (dailyCap=3, weeklyTarget=15) get min(15, 18)=15 not min(15, 6)=6
+  const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+  const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
   return { current: currentWeekCompletions, target: effectiveTarget };
 };
 
@@ -144,8 +146,9 @@ export const isItemBehind = (item, now = new Date()) => {
   const maxPerDay = dailyCap < 999 ? dailyCap : 1;
   const maxPossibleRemaining = daysRemaining * maxPerDay;
 
-  // Week 1 pro-rate
-  const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, 6) : weeklyTarget;
+  // Week 1 pro-rate (scale by dailyCap for Think Lists)
+  const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+  const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
 
   // Behind if even perfect completion from now can't meet target
   return (currentWeekCompletions + maxPossibleRemaining) < effectiveTarget;
@@ -210,4 +213,211 @@ export const formatTimeDisplay = (value) => {
   const ampm = hours >= 12 ? 'PM' : 'AM';
   hours = hours % 12 || 12;
   return minutes === '00' ? `${hours} ${ampm}` : `${hours}:${minutes} ${ampm}`;
+};
+
+/**
+ * Calculate accountability partner status based on homework progress
+ * @param {Array} homework - Array of homework items
+ * @returns {string} 'green' | 'red' | 'warning' | 'idle' | 'neutral'
+ */
+export const calculateAccountabilityStatus = (homework) => {
+  if (!homework || homework.length === 0) return 'neutral';
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const msPerWeek = 7 * msPerDay;
+
+  const activeHomework = homework.filter(h => h.status === 'active');
+  if (activeHomework.length === 0) return 'neutral';
+
+  let cantCatchUp = false;
+  let anyDoneToday = false;
+  let requiredToday = false;
+
+  for (const hw of activeHomework) {
+    const weeklyTarget = hw.weeklyTarget || 7;
+    const dailyCap = hw.dailyCap || 999;
+    const completions = hw.completions || [];
+
+    // Get assignedDate (same logic as HomeworkTile)
+    let assignedDate;
+    if (hw.assignedDate?.toDate) {
+      assignedDate = hw.assignedDate.toDate();
+    } else if (hw.assignedDate) {
+      assignedDate = new Date(hw.assignedDate);
+    } else if (hw.assignedAt?.toDate) {
+      assignedDate = hw.assignedAt.toDate();
+    } else if (hw.assignedAt) {
+      assignedDate = new Date(hw.assignedAt);
+    } else {
+      assignedDate = new Date();
+    }
+
+    const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
+
+    // Count completions in current period (grouped by day, capped per day)
+    const dailyCounts = {};
+    completions.forEach(c => {
+      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
+      const weekNum = Math.floor((cDate - assignedDate) / msPerWeek);
+      if (weekNum === weeksSinceAssigned) {
+        const dayKey = cDate.toDateString();
+        dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
+      }
+    });
+
+    let currentPeriodCompletions = 0;
+    for (const count of Object.values(dailyCounts)) {
+      currentPeriodCompletions += Math.min(count, dailyCap);
+    }
+
+    // Check if any completion today
+    const todayKey = todayStart.toDateString();
+    if (dailyCounts[todayKey] && dailyCounts[todayKey] > 0) {
+      anyDoneToday = true;
+    }
+
+    // Days remaining in this period (matches isItemBehind logic)
+    const weekStartMs = assignedDate.getTime() + (weeksSinceAssigned * msPerWeek);
+    const dayOfPeriod = Math.floor((now.getTime() - weekStartMs) / msPerDay);
+    const daysRemaining = 7 - dayOfPeriod;
+
+    // Week 1 pro-rate (scale by dailyCap for Think Lists)
+    const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+    const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
+
+    const maxPerDay = dailyCap < 999 ? dailyCap : 1;
+    const maxPossible = currentPeriodCompletions + (daysRemaining * maxPerDay);
+
+    if (maxPossible < effectiveTarget) {
+      cantCatchUp = true;
+    }
+
+    // "Required today" check: if skipping today means red tomorrow
+    if (!cantCatchUp && daysRemaining >= 1) {
+      const maxPossibleWithoutToday = currentPeriodCompletions + ((daysRemaining - 1) * maxPerDay);
+      if (maxPossibleWithoutToday < effectiveTarget) {
+        requiredToday = true;
+      }
+    }
+  }
+
+  if (cantCatchUp) return 'red';           // Red overrides everything - math doesn't work
+  if (anyDoneToday) return 'green';        // Not behind + did something today
+  if (requiredToday) return 'warning';     // Must do something today or red tomorrow
+  return 'idle';                            // Not behind + nothing done today (safe)
+};
+
+/**
+ * Calculate AP streak live from homework completions (consecutive days with activity)
+ * @param {Array} homework - Array of homework items
+ * @returns {number} Number of consecutive days with activity
+ */
+export const calculateAPStreak = (homework) => {
+  if (!homework || homework.length === 0) return 0;
+  const activeHomework = homework.filter(h => h.status === 'active');
+  if (activeHomework.length === 0) return 0;
+
+  // Collect ALL completion dates across all homework items
+  const daySet = new Set();
+  for (const hw of activeHomework) {
+    const completions = hw.completions || [];
+    for (const c of completions) {
+      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
+      daySet.add(new Date(cDate.getFullYear(), cDate.getMonth(), cDate.getDate()).getTime());
+    }
+  }
+
+  if (daySet.size === 0) return 0;
+
+  // Count consecutive days backward from today
+  const now = new Date();
+  const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  let streak = 0;
+
+  // Start from today
+  let checkDay = todayMs;
+  while (daySet.has(checkDay)) {
+    streak++;
+    checkDay -= msPerDay;
+  }
+
+  // If nothing today, check if yesterday had activity (streak from yesterday backward)
+  if (streak === 0) {
+    checkDay = todayMs - msPerDay;
+    while (daySet.has(checkDay)) {
+      streak++;
+      checkDay -= msPerDay;
+    }
+  }
+
+  return streak;
+};
+
+/**
+ * Calculate week streak: consecutive calendar weeks with at least 1 homework checkmark
+ * Uses Sunday-Saturday calendar weeks. Any single completion in a week = credit for that week.
+ * @param {Array} homework - Array of homework items
+ * @returns {number} Number of consecutive weeks with activity
+ */
+export const calculateWeekStreak = (homework) => {
+  if (!homework || homework.length === 0) return 0;
+  const activeHomework = homework.filter(h => h.status === 'active');
+  if (activeHomework.length === 0) return 0;
+
+  // Collect ALL completion dates across all active homework into a Set of week keys
+  const activeWeeks = new Set();
+  for (const hw of activeHomework) {
+    const completions = hw.completions || [];
+    for (const c of completions) {
+      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
+      // Get the Sunday that starts this calendar week
+      const sunday = new Date(cDate);
+      sunday.setDate(sunday.getDate() - sunday.getDay());
+      const weekKey = `${sunday.getFullYear()}-${sunday.getMonth()}-${sunday.getDate()}`;
+      activeWeeks.add(weekKey);
+    }
+  }
+
+  if (activeWeeks.size === 0) return 0;
+
+  // Count consecutive weeks backward from current week
+  const now = new Date();
+  const currentSunday = new Date(now);
+  currentSunday.setDate(currentSunday.getDate() - currentSunday.getDay());
+  currentSunday.setHours(0, 0, 0, 0);
+
+  let streak = 0;
+  let checkWeek = new Date(currentSunday);
+
+  while (true) {
+    const weekKey = `${checkWeek.getFullYear()}-${checkWeek.getMonth()}-${checkWeek.getDate()}`;
+    if (activeWeeks.has(weekKey)) {
+      streak++;
+      checkWeek.setDate(checkWeek.getDate() - 7);
+    } else {
+      break;
+    }
+    if (streak > 52) break;
+  }
+
+  // If nothing this week yet, check starting from last week
+  if (streak === 0) {
+    checkWeek = new Date(currentSunday);
+    checkWeek.setDate(checkWeek.getDate() - 7);
+    while (true) {
+      const weekKey = `${checkWeek.getFullYear()}-${checkWeek.getMonth()}-${checkWeek.getDate()}`;
+      if (activeWeeks.has(weekKey)) {
+        streak++;
+        checkWeek.setDate(checkWeek.getDate() - 7);
+      } else {
+        break;
+      }
+      if (streak > 52) break;
+    }
+  }
+
+  return streak;
 };

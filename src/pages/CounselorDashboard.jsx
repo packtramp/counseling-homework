@@ -17,6 +17,8 @@ import ActivityHistoryTile from '../components/ActivityHistoryTile';
 import ActivityHistoryPage from '../components/ActivityHistoryPage';
 import JournalingTile from '../components/JournalingTile';
 import JournalingPage from '../components/JournalingPage';
+import { isItemBehind, formatPhone } from '../utils/homeworkHelpers';
+import { downloadCounseleeData } from '../utils/generatePDF';
 
 // Helper to read/write URL params for state persistence
 const getUrlParams = () => new URLSearchParams(window.location.search);
@@ -24,19 +26,6 @@ const updateUrl = (params) => {
   const url = new URL(window.location);
   url.search = params.toString();
   window.history.replaceState({}, '', url);
-};
-
-// Format phone number as (xxx) xxx-xxxx
-const formatPhone = (phone) => {
-  if (!phone) return '';
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) {
-    return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
-  }
-  if (digits.length === 11 && digits[0] === '1') {
-    return `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`;
-  }
-  return phone; // Return as-is if not standard format
 };
 
 export default function CounselorDashboard() {
@@ -92,6 +81,8 @@ export default function CounselorDashboard() {
       }
       // Mark initial load complete so URL sync can start
       initialLoadDone.current = true;
+    }, (error) => {
+      console.error('Listener error for counselee list:', error.code, error.message);
     });
 
     // Listen to counselor's own user doc (for profile photo, phone)
@@ -100,6 +91,8 @@ export default function CounselorDashboard() {
       if (snapshot.exists()) {
         setCounselorProfile({ id: snapshot.id, ...snapshot.data() });
       }
+    }, (error) => {
+      console.error('Listener error for counselor profile:', error.code, error.message);
     });
 
     return () => {
@@ -115,40 +108,6 @@ export default function CounselorDashboard() {
     await updateDoc(userRef, updates);
   };
 
-  // Helper: Check if a homework item is "behind"
-  const isItemBehind = (item) => {
-    if (item.status === 'cancelled') return false;
-    const completions = item.completions || [];
-    const weeklyTarget = item.weeklyTarget || 7;
-    let assignedDate;
-    if (item.assignedDate?.toDate) {
-      assignedDate = item.assignedDate.toDate();
-    } else if (item.assignedDate) {
-      assignedDate = new Date(item.assignedDate);
-    } else {
-      assignedDate = new Date();
-    }
-    const now = new Date();
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const msPerWeek = 7 * msPerDay;
-    const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
-
-    let currentWeekCompletions = 0;
-    completions.forEach(c => {
-      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      const weekNum = Math.floor((cDate - assignedDate) / msPerWeek);
-      if (weekNum === weeksSinceAssigned) {
-        currentWeekCompletions++;
-      }
-    });
-
-    const weekStartMs = assignedDate.getTime() + (weeksSinceAssigned * msPerWeek);
-    const dayOfWeek = Math.floor((now.getTime() - weekStartMs) / msPerDay);
-    const daysRemaining = 7 - dayOfWeek;
-
-    return (currentWeekCompletions + daysRemaining) < weeklyTarget;
-  };
-
   // Calculate behind status for all counselees
   useEffect(() => {
     if (!user || counselees.length === 0) {
@@ -159,6 +118,7 @@ export default function CounselorDashboard() {
     const fetchBehindStatus = async () => {
       const status = {};
       for (const counselee of counselees) {
+        if (!counselee.uid) { status[counselee.id] = 0; continue; }
         try {
           const hwQuery = query(collection(db, `counselors/${user.uid}/counselees/${counselee.id}/homework`));
           const snapshot = await getDocs(hwQuery);
@@ -192,6 +152,8 @@ export default function CounselorDashboard() {
     const hwUnsub = onSnapshot(hwQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setHomework(list);
+    }, (error) => {
+      console.error('Listener error for homework:', error.code, error.message);
     });
 
     const sessQuery = query(
@@ -211,6 +173,8 @@ export default function CounselorDashboard() {
           pendingSessionId.current = null;
         }
       }
+    }, (error) => {
+      console.error('Listener error for sessions:', error.code, error.message);
     });
 
     const hjQuery = query(
@@ -220,6 +184,8 @@ export default function CounselorDashboard() {
     const hjUnsub = onSnapshot(hjQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setHeartJournals(list);
+    }, (error) => {
+      console.error('Listener error for heart journals:', error.code, error.message);
     });
 
     const tlQuery = query(
@@ -229,6 +195,8 @@ export default function CounselorDashboard() {
     const tlUnsub = onSnapshot(tlQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setThinkLists(list);
+    }, (error) => {
+      console.error('Listener error for think lists:', error.code, error.message);
     });
 
     const alQuery = query(
@@ -238,6 +206,8 @@ export default function CounselorDashboard() {
     const alUnsub = onSnapshot(alQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setActivityLog(list);
+    }, (error) => {
+      console.error('Listener error for activity log:', error.code, error.message);
     });
 
     const jnQuery = query(
@@ -247,6 +217,8 @@ export default function CounselorDashboard() {
     const jnUnsub = onSnapshot(jnQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setJournals(list);
+    }, (error) => {
+      console.error('Listener error for journals:', error.code, error.message);
     });
 
     return () => {
@@ -305,12 +277,16 @@ export default function CounselorDashboard() {
 
   const handleAddCounselee = async (e) => {
     e.preventDefault();
-    if (!newCounselee.name.trim() || !newCounselee.email.trim() || !newCounselee.password.trim()) {
-      setFormError('Name, email, and password are required');
+    if (!newCounselee.name.trim()) {
+      setFormError('Name is required');
       return;
     }
-
-    if (newCounselee.password.length < 6) {
+    const hasEmail = newCounselee.email.trim();
+    if (hasEmail && !newCounselee.password.trim()) {
+      setFormError('Password is required when email is provided');
+      return;
+    }
+    if (hasEmail && newCounselee.password.length < 6) {
       setFormError('Password must be at least 6 characters');
       return;
     }
@@ -319,53 +295,75 @@ export default function CounselorDashboard() {
     setFormLoading(true);
 
     try {
-      const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch('/api/create-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({
-          email: newCounselee.email,
-          password: newCounselee.password,
-          counselorId: user.uid
-        })
-      });
+      let uid = null;
 
-      const data = await response.json();
+      // Only create Firebase Auth account if email is provided
+      if (hasEmail) {
+        const idToken = await auth.currentUser.getIdToken();
+        const response = await fetch('/api/create-user', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify({
+            email: newCounselee.email,
+            password: newCounselee.password,
+            counselorId: user.uid,
+            name: newCounselee.name
+          })
+        });
 
-      if (!response.ok) {
-        const errorMsg = data.message ? `${data.error}: ${data.message}` : data.error;
-        throw new Error(errorMsg || 'Failed to create account');
+        const data = await response.json();
+        if (!response.ok) {
+          const errorMsg = data.message ? `${data.error}: ${data.message}` : data.error;
+          throw new Error(errorMsg || 'Failed to create account');
+        }
+        uid = data.uid;
       }
 
-      const counseleeRef = await addDoc(collection(db, `counselors/${user.uid}/counselees`), {
+      // Default reminder schedule: 9am, 3pm, 8pm every day
+      const defaultSchedule = {};
+      ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].forEach(day => {
+        defaultSchedule[day] = { slot1: '09:00', slot2: '15:00', slot3: '20:00' };
+      });
+
+      const counseleeDoc = {
         name: newCounselee.name,
-        email: newCounselee.email,
         phone: newCounselee.phone,
-        uid: data.uid,
         status: 'active',
         currentStreak: 0,
-        createdAt: serverTimestamp()
-      });
+        createdAt: serverTimestamp(),
+        emailReminders: !!hasEmail,
+        smsReminders: false,
+        reminderSchedule: defaultSchedule
+      };
+      if (hasEmail) {
+        counseleeDoc.email = newCounselee.email;
+        counseleeDoc.uid = uid;
+      }
 
-      const emailKey = newCounselee.email.toLowerCase().replace(/[.]/g, '_');
-      await setDoc(doc(db, 'counseleeLinks', emailKey), {
-        counselorId: user.uid,
-        counseleeDocId: counseleeRef.id,
-        email: newCounselee.email.toLowerCase(),
-        name: newCounselee.name
-      });
+      const counseleeRef = await addDoc(collection(db, `counselors/${user.uid}/counselees`), counseleeDoc);
 
-      await setDoc(doc(db, 'users', data.uid), {
-        email: newCounselee.email,
-        name: newCounselee.name,
-        role: 'counselee',
-        counselorId: user.uid,
-        counseleeDocId: counseleeRef.id,
-        createdAt: serverTimestamp()
-      });
+      // Only create counseleeLinks and users doc if email was provided
+      if (hasEmail && uid) {
+        const emailKey = newCounselee.email.toLowerCase().replace(/[.]/g, '_');
+        await setDoc(doc(db, 'counseleeLinks', emailKey), {
+          counselorId: user.uid,
+          counseleeDocId: counseleeRef.id,
+          email: newCounselee.email.toLowerCase(),
+          name: newCounselee.name
+        });
+
+        await setDoc(doc(db, 'users', uid), {
+          email: newCounselee.email,
+          name: newCounselee.name,
+          role: 'counselee',
+          counselorId: user.uid,
+          counseleeDocId: counseleeRef.id,
+          createdAt: serverTimestamp()
+        });
+      }
 
       setNewCounselee({ name: '', email: '', phone: '', password: '' });
       setShowAddForm(false);
@@ -887,6 +885,16 @@ export default function CounselorDashboard() {
               <button className="add-family-btn" onClick={() => setShowFamilyLinkModal(true)}>
                 + Link Family
               </button>
+              <button className="download-data-btn" onClick={async () => {
+                try {
+                  await downloadCounseleeData(user.uid, selectedCounselee.id, selectedCounselee.name);
+                } catch (err) {
+                  console.error('PDF download error:', err);
+                  alert('Could not generate PDF. Please try again.');
+                }
+              }}>
+                Download Data
+              </button>
               {selectedCounselee.graduated ? (
                 <button className="reactivate-btn" onClick={() => handleGraduateCounselee(false)}>
                   Reactivate
@@ -1097,10 +1105,9 @@ export default function CounselorDashboard() {
             />
             <input
               type="email"
-              placeholder="Email"
+              placeholder="Email (optional - skip to add without login)"
               value={newCounselee.email}
-              onChange={(e) => setNewCounselee({ ...newCounselee, email: e.target.value })}
-              required
+              onChange={(e) => setNewCounselee({ ...newCounselee, email: e.target.value, password: e.target.value ? newCounselee.password : '' })}
             />
             <input
               type="tel"
@@ -1108,13 +1115,15 @@ export default function CounselorDashboard() {
               value={newCounselee.phone}
               onChange={(e) => setNewCounselee({ ...newCounselee, phone: e.target.value })}
             />
-            <input
-              type="text"
-              placeholder="Temp Password (min 6 chars)"
-              value={newCounselee.password}
-              onChange={(e) => setNewCounselee({ ...newCounselee, password: e.target.value })}
-              required
-            />
+            {newCounselee.email.trim() && (
+              <input
+                type="text"
+                placeholder="Temp Password (min 6 chars)"
+                value={newCounselee.password}
+                onChange={(e) => setNewCounselee({ ...newCounselee, password: e.target.value })}
+                required
+              />
+            )}
             {formError && <div className="error">{formError}</div>}
             <div className="form-buttons">
               <button type="submit" disabled={formLoading}>
@@ -1150,7 +1159,9 @@ export default function CounselorDashboard() {
                       <strong>{counselee.name}</strong>
                       <span>{counselee.email || 'No email'}</span>
                     </div>
-                    {counselee.graduated ? (
+                    {!counselee.uid ? (
+                      <span className="no-login-badge">No login</span>
+                    ) : counselee.graduated ? (
                       <span className="graduated-badge">Graduated</span>
                     ) : behindCount > 0 ? (
                       <span className="behind-badge">{behindCount} behind</span>

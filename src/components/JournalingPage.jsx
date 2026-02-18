@@ -9,11 +9,14 @@ export default function JournalingPage({
   onClose,
   onSaved,
   role = 'counselee',
+  readOnly: forceReadOnly = false,
   basePath: propBasePath,
   journals = [],
   homework = [],
   onNavigate
 }) {
+  const isAccountability = role === 'accountability';
+  const isReadOnly = forceReadOnly || isAccountability;
   // Form fields
   const [title, setTitle] = useState('');
   const [goal, setGoal] = useState('');
@@ -139,6 +142,7 @@ export default function JournalingPage({
           await addDoc(collection(db, `${basePath}/activityLog`), {
             action: 'journal_created',
             actor: role,
+            actorUid: userProfile?.uid || '',
             actorName: userProfile?.name || role,
             details: `Created journal: ${formData.title || 'Untitled'}`,
             timestamp: serverTimestamp()
@@ -216,6 +220,7 @@ export default function JournalingPage({
           await addDoc(collection(db, `${basePath}/activityLog`), {
             action: 'homework_completed',
             actor: 'counselee',
+            actorUid: userProfile?.uid || '',
             actorName: userProfile?.name || 'counselee',
             details: `Journaled in "${title || 'Untitled'}"`,
             timestamp: serverTimestamp()
@@ -277,6 +282,7 @@ export default function JournalingPage({
           await addDoc(collection(db, `${basePath}/activityLog`), {
             action: 'journal_settings_changed',
             actor: role,
+            actorUid: userProfile?.uid || '',
             actorName: userProfile?.name || role,
             details: changeDetails.join('. '),
             timestamp: serverTimestamp()
@@ -285,6 +291,7 @@ export default function JournalingPage({
           await addDoc(collection(db, `${basePath}/activityLog`), {
             action: 'journal_edited',
             actor: role,
+            actorUid: userProfile?.uid || '',
             actorName: userProfile?.name || role,
             details: `Updated journal: ${formData.title || 'Untitled'}`,
             timestamp: serverTimestamp()
@@ -303,6 +310,7 @@ export default function JournalingPage({
         await addDoc(collection(db, `${basePath}/activityLog`), {
           action: 'journal_created',
           actor: role,
+          actorUid: userProfile?.uid || '',
           actorName: userProfile?.name || role,
           details: `Created journal: ${formData.title || 'Untitled'}`,
           timestamp: serverTimestamp()
@@ -375,6 +383,7 @@ export default function JournalingPage({
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'journal_deleted',
         actor: role,
+        actorUid: userProfile?.uid || '',
         actorName: userProfile?.name || role,
         details: `Deleted journal: ${deletedTitle}`,
         timestamp: serverTimestamp()
@@ -405,6 +414,7 @@ export default function JournalingPage({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Journal title..."
+            readOnly={isReadOnly}
           />
         </div>
 
@@ -418,7 +428,7 @@ export default function JournalingPage({
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               placeholder="What is the purpose of this journal?"
-              readOnly={role !== 'counselor'}
+              readOnly={isReadOnly || role !== 'counselor'}
             />
           </div>
         )}
@@ -433,12 +443,13 @@ export default function JournalingPage({
               onChange={(e) => setInstructions(e.target.value)}
               placeholder="How should the counselee use this journal? e.g., 'Write 3-5 sentences about what you're grateful for today.'"
               rows={2}
-              readOnly={role !== 'counselor'}
+              readOnly={isReadOnly || role !== 'counselor'}
             />
           </div>
         )}
 
-        {/* Homework Settings - both roles can set */}
+        {/* Homework Settings - both roles can set (except accountability) */}
+        {!isReadOnly && (
         <div className="jn-homework-settings">
             <h3 className="jn-section-title">Homework Settings</h3>
             <small className="jn-hint">Set to 0x/week for a personal journal (no homework tracking).</small>
@@ -477,8 +488,10 @@ export default function JournalingPage({
               </small>
             )}
         </div>
+        )}
 
-        {/* Daily Entry - quick add */}
+        {/* Daily Entry - quick add (not for read-only) */}
+        {!isReadOnly && (
         <div className="jn-field-group jn-daily-entry">
           <label>Add New Entry</label>
           <RichTextEditor
@@ -495,14 +508,16 @@ export default function JournalingPage({
             Add Entry
           </button>
         </div>
+        )}
 
         {/* Main content - all entries */}
         <div className="jn-field-group jn-main-content">
           <label>Journal Entries</label>
           <RichTextEditor
             content={content}
-            onChange={setContent}
+            onChange={isReadOnly ? () => {} : setContent}
             placeholder="Your journal entries will appear here..."
+            readOnly={isReadOnly}
           />
         </div>
       </div>
@@ -531,13 +546,17 @@ export default function JournalingPage({
         <button type="button" className="jn-footer-btn jn-back-btn" onClick={onClose}>
           Back
         </button>
-        <button type="button" className="jn-footer-btn jn-submit-btn" onClick={handleSubmit}>
-          {currentJournalId ? 'Update' : 'Submit'}
-        </button>
-        {currentJournalId && (
-          <button type="button" className="jn-footer-btn jn-delete-btn" onClick={handleDelete}>
-            Delete
-          </button>
+        {!isReadOnly && (
+          <>
+            <button type="button" className="jn-footer-btn jn-submit-btn" onClick={handleSubmit}>
+              {currentJournalId ? 'Update' : 'Submit'}
+            </button>
+            {currentJournalId && (
+              <button type="button" className="jn-footer-btn jn-delete-btn" onClick={handleDelete}>
+                Delete
+              </button>
+            )}
+          </>
         )}
       </footer>
     </div>

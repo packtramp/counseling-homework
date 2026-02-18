@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import RichTextEditor from './RichTextEditor';
+import { getCompletionsForDay, isCompletedToday, getTodayProgress, getWeeklyProgress, isItemBehind } from '../utils/homeworkHelpers';
 
 /**
  * Reusable Homework Tile with Current/Done tabs
@@ -18,6 +19,7 @@ import RichTextEditor from './RichTextEditor';
  * - sessionFilterOnly: boolean - current filter state
  * - onSessionFilterChange: (checked) => void - toggle callback
  * - completingId: string - ID of item currently being completed (for loading state)
+ * - onOpenThinkList: (item) => void - called when clicking a Think List homework item
  */
 export default function HomeworkTile({
   homework = [],
@@ -32,7 +34,8 @@ export default function HomeworkTile({
   showSessionFilter = false,
   sessionFilterOnly = false,
   onSessionFilterChange,
-  completingId = null
+  completingId = null,
+  onOpenThinkList
 }) {
   const [homeworkTab, setHomeworkTab] = useState('current');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -42,131 +45,6 @@ export default function HomeworkTile({
   const [originalValues, setOriginalValues] = useState(null);
 
   const isCounselor = role === 'counselor';
-
-  // Helper: Count completions for a specific day (for daily cap logic)
-  const getCompletionsForDay = (completions, targetDate) => {
-    const targetStr = targetDate.toDateString();
-    return completions.filter(c => {
-      const date = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      return date.toDateString() === targetStr;
-    }).length;
-  };
-
-  // Helper: Check if completed today (or hit daily cap)
-  const isCompletedToday = (item) => {
-    if (!item.completions || item.completions.length === 0) return false;
-    const today = new Date();
-    const todayCount = getCompletionsForDay(item.completions, today);
-    // If there's a daily cap, check if we've hit it; otherwise, any completion counts
-    const dailyCap = item.dailyCap || 999;
-    return todayCount >= dailyCap || (todayCount > 0 && !item.dailyCap);
-  };
-
-  // Helper: Get today's completions count and remaining (for display)
-  const getTodayProgress = (item) => {
-    const completions = item.completions || [];
-    const today = new Date();
-    const todayCount = getCompletionsForDay(completions, today);
-    const dailyCap = item.dailyCap || null;
-    return { count: todayCount, cap: dailyCap };
-  };
-
-  // Helper: Get weekly progress (respecting daily caps)
-  const getWeeklyProgress = (item) => {
-    const completions = item.completions || [];
-    const weeklyTarget = item.weeklyTarget || 7;
-    const dailyCap = item.dailyCap || 999; // Default to no cap
-    let assignedDate;
-    if (item.assignedDate?.toDate) {
-      assignedDate = item.assignedDate.toDate();
-    } else if (item.assignedDate) {
-      assignedDate = new Date(item.assignedDate);
-    } else {
-      assignedDate = new Date();
-    }
-    const now = new Date();
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const msPerWeek = 7 * msPerDay;
-    const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
-
-    // Group completions by day within this week
-    const dailyCounts = {};
-    completions.forEach(c => {
-      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      const weekNum = Math.floor((cDate - assignedDate) / msPerWeek);
-      if (weekNum === weeksSinceAssigned) {
-        const dayKey = cDate.toDateString();
-        dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
-      }
-    });
-
-    // Sum capped daily completions
-    let currentWeekCompletions = 0;
-    for (const count of Object.values(dailyCounts)) {
-      currentWeekCompletions += Math.min(count, dailyCap);
-    }
-
-    // Week 1 pro-rate: assignment night doesn't count as a full day
-    const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, 6) : weeklyTarget;
-    return { current: currentWeekCompletions, target: effectiveTarget };
-  };
-
-  // Helper: Check if item is "behind" - can't catch up even with perfect completion
-  // Logic: isBehind = (cappedCompletionsThisWeek + maxPossibleRemaining) < effectiveTarget
-  const isItemBehind = (item) => {
-    if (item.status === 'cancelled') return false;
-    const completions = item.completions || [];
-    const weeklyTarget = item.weeklyTarget || 7;
-    const dailyCap = item.dailyCap || 999; // Default to no cap
-    let assignedDate;
-    if (item.assignedDate?.toDate) {
-      assignedDate = item.assignedDate.toDate();
-    } else if (item.assignedDate) {
-      assignedDate = new Date(item.assignedDate);
-    } else {
-      assignedDate = new Date();
-    }
-    const now = new Date();
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const msPerWeek = 7 * msPerDay;
-    const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
-
-    // Group completions by day within this week
-    const dailyCounts = {};
-    completions.forEach(c => {
-      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      const weekNum = Math.floor((cDate - assignedDate) / msPerWeek);
-      if (weekNum === weeksSinceAssigned) {
-        const dayKey = cDate.toDateString();
-        dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
-      }
-    });
-
-    // Sum capped daily completions
-    let currentWeekCompletions = 0;
-    for (const count of Object.values(dailyCounts)) {
-      currentWeekCompletions += Math.min(count, dailyCap);
-    }
-
-    // Calculate days remaining in this homework week (including today)
-    const weekStartMs = assignedDate.getTime() + (weeksSinceAssigned * msPerWeek);
-    const dayOfWeek = Math.floor((now.getTime() - weekStartMs) / msPerDay);
-    const daysRemaining = 7 - dayOfWeek;
-
-    // For "behind" calculation with daily cap, max possible = daysRemaining * min(dailyCap, 1)
-    // But for simplicity, if there's a daily cap, max per day is that cap
-    // Otherwise it's 1 (assuming they do at least 1 per day max)
-    const maxPerDay = dailyCap < 999 ? dailyCap : 1;
-    const maxPossibleRemaining = daysRemaining * maxPerDay;
-
-    // Week 1 pro-rate: assignment night doesn't count as a full day
-    // e.g. 7/week assigned Thu 8pm = only 6 full days (Fri-Wed), so cap target at 6
-    // Week 2+ gets full target since they had all 7 days
-    const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, 6) : weeklyTarget;
-
-    // Behind if even perfect completion from now can't meet target
-    return (currentWeekCompletions + maxPossibleRemaining) < effectiveTarget;
-  };
 
   // Helper: Get last completion date
   const getLastCompletionDate = (item) => {
@@ -228,7 +106,8 @@ export default function HomeworkTile({
     for (let w = 0; w < totalWeeks; w++) {
       const weekStart = new Date(assignedDate.getTime() + w * msPerWeek);
       const weekEnd = new Date(assignedDate.getTime() + (w + 1) * msPerWeek);
-      const effectiveTarget = w === 0 ? Math.min(weeklyTarget, 6) : weeklyTarget;
+      const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+      const effectiveTarget = w === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
       const dailyBuckets = {};
       for (const c of completions) {
         const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
@@ -279,7 +158,8 @@ export default function HomeworkTile({
     for (let w = 0; w < totalWeeks; w++) {
       const weekStart = new Date(assignedDate.getTime() + w * msPerWeek);
       const weekEnd = new Date(assignedDate.getTime() + (w + 1) * msPerWeek);
-      const effectiveTarget = w === 0 ? Math.min(weeklyTarget, 6) : weeklyTarget;
+      const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+      const effectiveTarget = w === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
       const dailyBuckets = {};
       for (const c of completions) {
         const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
@@ -611,16 +491,36 @@ export default function HomeworkTile({
                 const streak = getStreakInfo(item);
 
                 if (isCounselor) {
+                  const isThinkList = !!item.linkedThinkListId;
                   return (
-                    <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''}`}>
-                      <span className={`counselor-check-indicator ${doneToday ? 'checked' : ''}`}>
-                        {doneToday ? '✓' : ''}
-                      </span>
-                      <a className="homework-status-title clickable" onClick={() => startEdit(item)}>
+                    <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${isThinkList ? 'thinklist-item' : ''}`}
+                      onClick={isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : undefined}
+                      style={isThinkList && onOpenThinkList ? { cursor: 'pointer' } : undefined}
+                    >
+                      {isThinkList ? (
+                        <span className="thinklist-indicator">
+                          <svg viewBox="1 0 22 24" width="28" height="28">
+                            <path d="M8 4 C6 3.5 4 5 3.5 7 C3 9 3 11 4 13 C5 14.5 6.5 15 8 15 L8 15.5 C8.5 16.5 7.5 17.5 8 18.5 C8.5 19.5 9.5 19.5 10 19 L10.5 18 C11 17.5 12 17 13 17 C14 17.5 15.5 17.5 16.5 16.5 C17.5 15.5 18 14 18 13 C19 12 19.5 10 19 8 C18.5 6 17.5 4.5 16 4 C14.5 3.5 13 4 12 4.5 C11 3.5 9.5 3.5 8 4Z" fill="#F8A4B8" stroke="#333" strokeWidth="1" strokeLinejoin="round"/>
+                            <path d="M4.5 7.5 C7 8.5 9 7.5 11.5 8 C13.5 8.5 16 7.5 18 8" fill="none" stroke="#333" strokeWidth="0.7"/>
+                            <path d="M4 10.5 C6 11.5 9 10.5 11 11 C13 11.5 16 10.5 18.5 11" fill="none" stroke="#333" strokeWidth="0.7"/>
+                            <path d="M5 13.5 C7 14 9 13 11 13.5" fill="none" stroke="#333" strokeWidth="0.7"/>
+                            <path d="M13 17 C13.5 15.5 13 14 13.5 13" fill="none" stroke="#333" strokeWidth="0.6"/>
+                            <path d="M10.5 7v2H8v2h2.5v5h2v-5H15v-2h-2.5V7h-2z" fill="white"/>
+                          </svg>
+                        </span>
+                      ) : (
+                        <span className={`counselor-check-indicator ${doneToday ? 'checked' : ''}`}>
+                          {doneToday ? '✓' : ''}
+                        </span>
+                      )}
+                      <a className="homework-status-title clickable" onClick={(e) => { if (isThinkList && onOpenThinkList) { e.stopPropagation(); onOpenThinkList(item); } else if (!isThinkList) startEdit(item); }}>
                         {item.title}
                       </a>
                       <span className="homework-status-progress">
-                        {progress.current}/{progress.target} this week
+                        {isThinkList ? (() => {
+                          const todayProg = getTodayProgress(item);
+                          return todayProg.cap ? `${todayProg.count}/${todayProg.cap} today · ` : '';
+                        })() : ''}{progress.current}/{progress.target} this week
                         {streak && (
                           <span className={`streak-info ${streak.isPositive ? 'streak-positive' : 'streak-negative'}`}>
                             {streak.isPositive ? ` · ${streak.streak}wk streak` : ` · missed ${streak.streak}wk`}
@@ -632,20 +532,40 @@ export default function HomeworkTile({
                 }
 
                 // B-side: same compact layout as A-side, but with interactive check button
+                const isThinkList = !!item.linkedThinkListId;
                 return (
-                  <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''}`}>
-                    <button
-                      className={`check-btn ${doneToday ? 'checked' : ''} ${isCompleting ? 'completing' : ''}`}
-                      onClick={() => onComplete?.(item)}
-                      disabled={doneToday || isCompleting}
-                    >
-                      {doneToday ? '✓' : isCompleting ? '...' : ''}
-                    </button>
-                    <a className="homework-status-title clickable" onClick={() => startEdit(item)}>
+                  <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${isThinkList ? 'thinklist-item' : ''}`}
+                    onClick={isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : undefined}
+                    style={isThinkList && onOpenThinkList ? { cursor: 'pointer' } : undefined}
+                  >
+                    {isThinkList ? (
+                      <span className="thinklist-indicator">
+                        <svg viewBox="1 0 22 24" width="28" height="28">
+                          <path d="M8 4 C6 3.5 4 5 3.5 7 C3 9 3 11 4 13 C5 14.5 6.5 15 8 15 L8 15.5 C8.5 16.5 7.5 17.5 8 18.5 C8.5 19.5 9.5 19.5 10 19 L10.5 18 C11 17.5 12 17 13 17 C14 17.5 15.5 17.5 16.5 16.5 C17.5 15.5 18 14 18 13 C19 12 19.5 10 19 8 C18.5 6 17.5 4.5 16 4 C14.5 3.5 13 4 12 4.5 C11 3.5 9.5 3.5 8 4Z" fill="#F8A4B8" stroke="#333" strokeWidth="1" strokeLinejoin="round"/>
+                          <path d="M4.5 7.5 C7 8.5 9 7.5 11.5 8 C13.5 8.5 16 7.5 18 8" fill="none" stroke="#333" strokeWidth="0.7"/>
+                          <path d="M4 10.5 C6 11.5 9 10.5 11 11 C13 11.5 16 10.5 18.5 11" fill="none" stroke="#333" strokeWidth="0.7"/>
+                          <path d="M5 13.5 C7 14 9 13 11 13.5" fill="none" stroke="#333" strokeWidth="0.7"/>
+                          <path d="M13 17 C13.5 15.5 13 14 13.5 13" fill="none" stroke="#333" strokeWidth="0.6"/>
+                          <path d="M10.5 7v2H8v2h2.5v5h2v-5H15v-2h-2.5V7h-2z" fill="white"/>
+                        </svg>
+                      </span>
+                    ) : (
+                      <button
+                        className={`check-btn ${doneToday ? 'checked' : ''} ${isCompleting ? 'completing' : ''}`}
+                        onClick={() => onComplete?.(item)}
+                        disabled={doneToday || isCompleting}
+                      >
+                        {doneToday ? '✓' : isCompleting ? '...' : ''}
+                      </button>
+                    )}
+                    <a className="homework-status-title clickable" onClick={(e) => { if (isThinkList && onOpenThinkList) { e.stopPropagation(); onOpenThinkList(item); } else if (!isThinkList) startEdit(item); }}>
                       {item.title}
                     </a>
                     <span className="homework-status-progress">
-                      {progress.current}/{progress.target} this week
+                      {isThinkList ? (() => {
+                        const todayProg = getTodayProgress(item);
+                        return todayProg.cap ? `${todayProg.count}/${todayProg.cap} today · ` : '';
+                      })() : ''}{progress.current}/{progress.target} this week
                       {streak && (
                         <span className={`streak-info ${streak.isPositive ? 'streak-positive' : 'streak-negative'}`}>
                           {streak.isPositive ? ` · ${streak.streak}wk streak` : ` · missed ${streak.streak}wk`}

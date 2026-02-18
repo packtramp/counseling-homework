@@ -25,3 +25,7 @@ dist-ssr
 
 .vercel
 .env*.local
+
+# Firebase service account keys (NEVER commit)
+*firebase-adminsdk*
+serviceaccountkey.json

@@ -32,9 +32,10 @@ const formatDateTimeDisplay = (timestamp) => {
  * - onClose: () => void - called when closing the page
  * - onSaved: () => void - called after saving
  * - editingJournal: journal object to edit/view (null for new)
- * - role: 'counselee' | 'counselor' - determines permissions
+ * - role: 'counselee' | 'counselor' | 'accountability' - determines permissions
+ * - readOnly: boolean - force read-only mode (for accountability)
  */
-export default function HeartJournalPage({ userProfile, onClose, onSaved, editingJournal = null, role = 'counselee' }) {
+export default function HeartJournalPage({ userProfile, onClose, onSaved, editingJournal = null, role = 'counselee', readOnly: forceReadOnly = false }) {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); // '', 'saving', 'saved'
   const [currentJournalId, setCurrentJournalId] = useState(editingJournal?.id || null);
@@ -42,13 +43,15 @@ export default function HeartJournalPage({ userProfile, onClose, onSaved, editin
   const lastSavedFormRef = useRef(null);
 
   const isCounselor = role === 'counselor';
+  const isAccountability = role === 'accountability';
+  const canEverEdit = role === 'counselee'; // Only counselees can edit
 
   // Determine initial read-only state:
-  // - Counselor: always read-only
+  // - Counselor/Accountability: always read-only
   // - Counselee on new/draft: edit mode
   // - Counselee on submitted: read-only (can toggle to edit)
   const getInitialReadOnly = () => {
-    if (isCounselor) return true;
+    if (forceReadOnly || isCounselor || isAccountability) return true;
     if (!editingJournal) return false; // New journal = edit mode
     if (editingJournal.status === 'draft') return false;
     return true; // Submitted = start in read-only
@@ -282,6 +285,7 @@ export default function HeartJournalPage({ userProfile, onClose, onSaved, editin
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'heart_journal_submitted',
         actor: 'counselee',
+        actorUid: userProfile?.uid || '',
         actorName: userProfile.name,
         details: `Submitted Heart Journal`,
         timestamp: serverTimestamp()
@@ -331,6 +335,7 @@ export default function HeartJournalPage({ userProfile, onClose, onSaved, editin
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'heart_journal_deleted',
         actor: 'counselee',
+        actorUid: userProfile?.uid || '',
         actorName: userProfile?.name || 'counselee',
         details: 'Deleted Heart Journal draft',
         timestamp: serverTimestamp()
@@ -454,7 +459,7 @@ export default function HeartJournalPage({ userProfile, onClose, onSaved, editin
 
       <main className="hj-page-content">
         {/* Edit button for counselees viewing submitted entries - at top of content */}
-        {readOnly && !isCounselor && editingJournal?.status === 'submitted' && (
+        {readOnly && canEverEdit && editingJournal?.status === 'submitted' && (
           <div className="hj-edit-bar">
             <button className="hj-edit-toggle-btn" onClick={handleEditToggle}>Edit Entry</button>
           </div>
@@ -649,7 +654,7 @@ export default function HeartJournalPage({ userProfile, onClose, onSaved, editin
             )}
           </>
         )}
-        {readOnly && !isCounselor && (
+        {readOnly && canEverEdit && (
           <button type="button" className="hj-footer-btn hj-edit-btn" onClick={handleEditToggle}>
             Edit
           </button>

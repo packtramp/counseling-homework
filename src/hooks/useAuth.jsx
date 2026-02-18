@@ -66,8 +66,9 @@ export function AuthProvider({ children }) {
     login,
     signup,
     logout,
-    isCounselor: userProfile?.role === 'counselor',
-    isCounselee: userProfile?.role === 'counselee',
+    // Support both old role-based system AND new flag-based system
+    isCounselor: userProfile?.isCounselor === true || userProfile?.role === 'counselor',
+    isSuperAdmin: userProfile?.isSuperAdmin === true,
   };
 
   return (

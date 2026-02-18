@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import { Resend } from 'resend';
 
 // Initialize Firebase Admin if not already done
 if (!admin.apps.length) {
@@ -54,7 +55,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const { email, password, counselorId } = req.body;
+  const { email, password, counselorId, name } = req.body;
 
   if (!email || !password || !counselorId) {
     return res.status(400).json({ error: 'Missing required fields', received: { email: !!email, password: !!password, counselorId: !!counselorId } });
@@ -77,6 +78,13 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Forbidden - UID mismatch' });
     }
 
+    // Verify caller is actually a counselor or superAdmin
+    const db = admin.firestore();
+    const callerDoc = await db.collection('users').doc(decodedToken.uid).get();
+    if (!callerDoc.exists || (!callerDoc.data().isCounselor && !callerDoc.data().isSuperAdmin)) {
+      return res.status(403).json({ error: 'Forbidden - must be a counselor' });
+    }
+
     // Create the user
     console.log('Creating user:', email);
     const userRecord = await admin.auth().createUser({
@@ -85,9 +93,46 @@ export default async function handler(req, res) {
     });
 
     console.log('User created:', userRecord.uid);
+
+    // Send welcome email with login credentials
+    let emailSent = false;
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        const greeting = name ? `Hi ${name},` : 'Hi,';
+        await resend.emails.send({
+          from: 'GCC Counseling <noreply@counselinghomework.com>',
+          to: email,
+          subject: 'Welcome to GCC Counseling Homework',
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>Welcome to GCC Counseling Homework!</h2>
+              <p>${greeting}</p>
+              <p>An account has been created for you on the GCC Counseling Homework app.</p>
+              <p><strong>Your login details:</strong></p>
+              <ul>
+                <li><strong>Email:</strong> ${email}</li>
+                <li><strong>Temporary Password:</strong> ${password}</li>
+              </ul>
+              <p>Please log in at <a href="https://counselinghomework.com">counselinghomework.com</a> and change your password in Account Settings.</p>
+              <p>If you have any questions, please contact your counselor.</p>
+              <p>Grace and peace,<br>GCC Counseling Team</p>
+            </div>
+          `
+        });
+        emailSent = true;
+        console.log('Welcome email sent to:', email);
+      } catch (emailError) {
+        console.error('Failed to send welcome email:', emailError);
+      }
+    } else {
+      console.warn('RESEND_API_KEY not set - skipping welcome email');
+    }
+
     return res.status(200).json({
       success: true,
-      uid: userRecord.uid
+      uid: userRecord.uid,
+      emailSent
     });
   } catch (error) {
     console.error('Error in create-user:', error.code, error.message);

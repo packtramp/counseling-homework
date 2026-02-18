@@ -3,7 +3,7 @@
  *
  * Props:
  * - journals: array of heart journal entries
- * - role: 'counselee' | 'counselor'
+ * - role: 'counselee' | 'counselor' | 'accountability'
  * - onView: (journal) => void - called when viewing a journal (opens HeartJournalPage)
  * - onAdd: () => void - called when adding new (counselee only)
  */
@@ -14,6 +14,7 @@ export default function HeartJournalsTile({
   onAdd
 }) {
   const isCounselor = role === 'counselor';
+  const canEdit = role === 'counselee'; // Only counselees can add/edit drafts
 
   // Separate drafts from submitted journals
   const drafts = journals.filter(j => j.status === 'draft');
@@ -36,11 +37,11 @@ export default function HeartJournalsTile({
       <div className="hj-tile-header">
         <span className="hj-tile-title">
           Heart Journals ({submitted.length})
-          {drafts.length > 0 && !isCounselor && (
+          {drafts.length > 0 && canEdit && (
             <span className="hj-draft-count"> + {drafts.length} draft{drafts.length > 1 ? 's' : ''}</span>
           )}
         </span>
-        {!isCounselor && onAdd && (
+        {canEdit && onAdd && (
           <button className="hj-add-btn" onClick={onAdd} title="New Heart Journal">
             <svg viewBox="0 0 24 24" width="24" height="24">
               <path
@@ -58,7 +59,7 @@ export default function HeartJournalsTile({
 
       <div className="hj-tile-content">
         {/* Drafts section - counselee only */}
-        {drafts.length > 0 && !isCounselor && (
+        {drafts.length > 0 && canEdit && (
           <div className="hj-drafts-section">
             {drafts.map(journal => (
               <div

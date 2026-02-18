@@ -15,18 +15,7 @@ import ActivityHistoryTile from '../components/ActivityHistoryTile';
 import ActivityHistoryPage from '../components/ActivityHistoryPage';
 import JournalingTile from '../components/JournalingTile';
 import JournalingPage from '../components/JournalingPage';
-
-const formatPhone = (phone) => {
-  if (!phone) return '';
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) {
-    return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
-  }
-  if (digits.length === 11 && digits[0] === '1') {
-    return `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`;
-  }
-  return phone;
-};
+import { formatPhone } from '../utils/homeworkHelpers';
 
 export default function CounseleeDashboard() {
   const { user, userProfile, logout } = useAuth();
@@ -67,6 +56,8 @@ export default function CounseleeDashboard() {
       if (snapshot.exists()) {
         setCounseleeData({ id: snapshot.id, ...snapshot.data() });
       }
+    }, (error) => {
+      console.error('Listener error for self counselee doc:', error.code, error.message);
     });
 
     // Listen to counselor's user profile (for contact info on B-side)
@@ -75,6 +66,8 @@ export default function CounseleeDashboard() {
       if (snapshot.exists()) {
         setCounselorProfile({ id: snapshot.id, ...snapshot.data() });
       }
+    }, (error) => {
+      console.error('Listener error for counselor profile:', error.code, error.message);
     });
 
     // Listen to homework (load all, filter at render time)
@@ -83,6 +76,8 @@ export default function CounseleeDashboard() {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setHomework(list);
       setLoading(false);
+    }, (error) => {
+      console.error('Listener error for homework:', error.code, error.message);
     });
 
     // Listen to think lists (include drafts and active)
@@ -93,6 +88,8 @@ export default function CounseleeDashboard() {
     const unsubThink = onSnapshot(thinkQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setThinkLists(list);
+    }, (error) => {
+      console.error('Listener error for think lists:', error.code, error.message);
     });
 
     // Listen to activity log (last 20 entries)
@@ -104,6 +101,8 @@ export default function CounseleeDashboard() {
     const unsubLog = onSnapshot(logQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setActivityLog(list);
+    }, (error) => {
+      console.error('Listener error for activity log:', error.code, error.message);
     });
 
     // Listen to sessions
@@ -114,6 +113,8 @@ export default function CounseleeDashboard() {
     const unsubSess = onSnapshot(sessQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setSessions(list);
+    }, (error) => {
+      console.error('Listener error for sessions:', error.code, error.message);
     });
 
     // Listen to heart journals
@@ -124,6 +125,8 @@ export default function CounseleeDashboard() {
     const unsubHJ = onSnapshot(hjQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setHeartJournals(list);
+    }, (error) => {
+      console.error('Listener error for heart journals:', error.code, error.message);
     });
 
     // Listen to journals
@@ -134,6 +137,8 @@ export default function CounseleeDashboard() {
     const unsubJN = onSnapshot(jnQuery, (snapshot) => {
       const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setJournals(list);
+    }, (error) => {
+      console.error('Listener error for journals:', error.code, error.message);
     });
 
     return () => {

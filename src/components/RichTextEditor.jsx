@@ -52,7 +52,7 @@ const MenuBar = ({ editor }) => {
   );
 };
 
-export default function RichTextEditor({ content, onChange, placeholder }) {
+export default function RichTextEditor({ content, onChange, placeholder, readOnly = false }) {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -61,8 +61,11 @@ export default function RichTextEditor({ content, onChange, placeholder }) {
       }),
     ],
     content: content || '',
+    editable: !readOnly,
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
+      if (!readOnly) {
+        onChange(editor.getHTML());
+      }
     },
   });
 
@@ -73,9 +76,16 @@ export default function RichTextEditor({ content, onChange, placeholder }) {
     }
   }, [content, editor]);
 
+  // Update editable state when readOnly prop changes
+  useEffect(() => {
+    if (editor) {
+      editor.setEditable(!readOnly);
+    }
+  }, [readOnly, editor]);
+
   return (
-    <div className="rich-text-editor">
-      <MenuBar editor={editor} />
+    <div className={`rich-text-editor ${readOnly ? 'readonly' : ''}`}>
+      {!readOnly && <MenuBar editor={editor} />}
       <EditorContent editor={editor} />
     </div>
   );

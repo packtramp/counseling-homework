@@ -8,11 +8,14 @@ export default function ThinkListPage({
   onClose,
   onSaved,
   role = 'counselee',
+  readOnly: forceReadOnly = false,
   basePath: propBasePath,
   thinkLists = [],
   homework = [],
   onNavigate
 }) {
+  const isAccountability = role === 'accountability';
+  const isReadOnly = forceReadOnly || isAccountability;
   // Form fields
   const [title, setTitle] = useState('');
   const [instructions, setInstructions] = useState('');
@@ -121,8 +124,13 @@ export default function ThinkListPage({
   // Find linked homework for this think list (for Mark Reviewed button)
   const linkedHw = homework.find(h => h.linkedThinkListId === editingThinkList?.id && h.status === 'active');
 
+  // Client-side backup cooldown (in case Firestore data hasn't synced yet)
+  const [lastReviewedAt, setLastReviewedAt] = useState(null);
+
   // Check if review was done within the last hour (1hr debounce)
   const reviewedRecently = (() => {
+    // Client-side backup cooldown
+    if (lastReviewedAt && (Date.now() - lastReviewedAt) < 60 * 60 * 1000) return true;
     if (!linkedHw) return false;
     const completions = linkedHw.completions || [];
     if (completions.length === 0) return false;
@@ -144,10 +152,12 @@ export default function ThinkListPage({
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'homework_completed',
         actor: 'counselee',
+        actorUid: userProfile?.uid || '',
         actorName: userProfile?.name || 'counselee',
         details: `Reviewed "${editingThinkList.title || 'Think List'}"`,
         timestamp: serverTimestamp()
       });
+      setLastReviewedAt(Date.now());
       onClose();
     } catch (error) {
       console.error('Failed to mark reviewed:', error);
@@ -401,6 +411,7 @@ export default function ThinkListPage({
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: changeDetails.length > 0 ? 'think_list_settings_changed' : 'think_list_submitted',
         actor: role,
+        actorUid: userProfile?.uid || '',
         actorName: userProfile?.name || role,
         details: detailStr,
         timestamp: serverTimestamp()
@@ -427,6 +438,7 @@ export default function ThinkListPage({
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'think_list_deleted',
         actor: role,
+        actorUid: userProfile?.uid || '',
         actorName: userProfile?.name || role,
         details: `Deleted Think List: ${deletedTitle}`,
         timestamp: serverTimestamp()
@@ -467,6 +479,7 @@ export default function ThinkListPage({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g., Am I Thinking About God"
+              readOnly={isReadOnly}
             />
           </div>
 
@@ -480,12 +493,13 @@ export default function ThinkListPage({
                 onChange={(e) => setInstructions(e.target.value)}
                 placeholder="How should the counselee use this Think List? e.g., 'Read through this list slowly, pausing to reflect on each point. Pray through the put off/put on items.'"
                 rows={2}
-                readOnly={role !== 'counselor'}
+                readOnly={isReadOnly || role !== 'counselor'}
               />
             </div>
           )}
 
-          {/* Homework Settings - both roles can set */}
+          {/* Homework Settings - both roles can set (except accountability) */}
+          {!isReadOnly && (
           <div className="tl-homework-settings">
               <h3 className="tl-section-title">Homework Settings</h3>
               <small className="tl-hint">Set to 0x/day for a reference-only Think List (no homework tracking).</small>
@@ -536,6 +550,7 @@ export default function ThinkListPage({
                 </small>
               )}
           </div>
+          )}
 
           {/* Verse */}
           <div className="tl-field-group">
@@ -546,6 +561,7 @@ export default function ThinkListPage({
               onChange={(e) => setVerse(e.target.value)}
               placeholder="e.g., 1 Corinthians 10:31 - 'Whether, then, you eat or drink or whatever you do, do all to the glory of God.'"
               rows={3}
+              readOnly={isReadOnly}
             />
           </div>
 
@@ -558,6 +574,7 @@ export default function ThinkListPage({
               onChange={(e) => setThinkListContent(e.target.value)}
               placeholder="As I think about regular mundane, daily activities or consider large life-decisions, I want to always be thinking about God and how his Word applies..."
               rows={4}
+              readOnly={isReadOnly}
             />
           </div>
 
@@ -579,6 +596,7 @@ export default function ThinkListPage({
                   onChange={(e) => setAttitudePutOff(e.target.value)}
                   placeholder="e.g., 'This is a small decision, God doesn't care.'"
                   rows={2}
+                  readOnly={isReadOnly}
                 />
               </div>
               <div className="tl-field-group">
@@ -589,6 +607,7 @@ export default function ThinkListPage({
                   onChange={(e) => setAttitudePutOn(e.target.value)}
                   placeholder="e.g., 'God cares and knows about all my decisions.'"
                   rows={2}
+                  readOnly={isReadOnly}
                 />
               </div>
             </div>
@@ -606,6 +625,7 @@ export default function ThinkListPage({
                   onChange={(e) => setThoughtsPutOff(e.target.value)}
                   placeholder="e.g., 'I deserve better. That is not fair! I will take matters into my own hand.'"
                   rows={2}
+                  readOnly={isReadOnly}
                 />
               </div>
               <div className="tl-field-group">
@@ -616,6 +636,7 @@ export default function ThinkListPage({
                   onChange={(e) => setThoughtsPutOn(e.target.value)}
                   placeholder="e.g., 'What honors God the most?'"
                   rows={2}
+                  readOnly={isReadOnly}
                 />
               </div>
             </div>
@@ -633,6 +654,7 @@ export default function ThinkListPage({
                   onChange={(e) => setActionsPutOff(e.target.value)}
                   placeholder="e.g., 'Quick words.'"
                   rows={2}
+                  readOnly={isReadOnly}
                 />
               </div>
               <div className="tl-field-group">
@@ -643,6 +665,7 @@ export default function ThinkListPage({
                   onChange={(e) => setActionsPutOn(e.target.value)}
                   placeholder="e.g., 'Thoughtfully think through what I say.'"
                   rows={2}
+                  readOnly={isReadOnly}
                 />
               </div>
             </div>
@@ -675,27 +698,31 @@ export default function ThinkListPage({
         <button type="button" className="tl-footer-btn tl-back-btn" onClick={onClose}>
           Back
         </button>
-        {editingThinkList?.status === 'active' && linkedHw ? (
-          <button
-            type="button"
-            className={`tl-footer-btn ${reviewedRecently ? 'tl-reviewed-btn' : 'tl-mark-reviewed-btn'}`}
-            onClick={handleMarkReviewed}
-            disabled={reviewedRecently || markingReviewed}
-          >
-            {markingReviewed ? 'Marking...' : reviewedRecently ? 'Reviewed' : 'Mark Reviewed'}
-          </button>
-        ) : editingThinkList?.status !== 'active' ? (
-          <button type="button" className="tl-footer-btn tl-draft-btn" onClick={handleSaveDraft}>
-            Save Draft
-          </button>
-        ) : null}
-        <button type="button" className="tl-footer-btn tl-submit-btn" onClick={handleSubmit}>
-          {editingThinkList?.status === 'active' ? 'Update' : 'Submit'}
-        </button>
-        {editingThinkList && currentThinkListId && (
-          <button type="button" className="tl-footer-btn tl-delete-btn" onClick={handleDelete}>
-            Delete
-          </button>
+        {!isReadOnly && (
+          <>
+            {editingThinkList?.status === 'active' && linkedHw ? (
+              <button
+                type="button"
+                className={`tl-footer-btn ${reviewedRecently ? 'tl-reviewed-btn' : 'tl-mark-reviewed-btn'}`}
+                onClick={handleMarkReviewed}
+                disabled={reviewedRecently || markingReviewed}
+              >
+                {markingReviewed ? 'Marking...' : reviewedRecently ? 'Reviewed' : 'Mark Reviewed'}
+              </button>
+            ) : editingThinkList?.status !== 'active' ? (
+              <button type="button" className="tl-footer-btn tl-draft-btn" onClick={handleSaveDraft}>
+                Save Draft
+              </button>
+            ) : null}
+            <button type="button" className="tl-footer-btn tl-submit-btn" onClick={handleSubmit}>
+              {editingThinkList?.status === 'active' ? 'Update' : 'Submit'}
+            </button>
+            {editingThinkList && currentThinkListId && (
+              <button type="button" className="tl-footer-btn tl-delete-btn" onClick={handleDelete}>
+                Delete
+              </button>
+            )}
+          </>
         )}
       </footer>
     </div>

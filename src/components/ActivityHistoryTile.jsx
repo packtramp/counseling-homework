@@ -39,7 +39,7 @@ export default function ActivityHistoryTile({ activityLog = [], onViewAll }) {
             {activityLog.slice(0, 5).map(entry => (
               <li key={entry.id} className="log-entry">
                 <span className="log-time">{formatLogDate(entry.timestamp)}</span>
-                <span className="log-details">{entry.details}</span>
+                <span className="log-details">{entry.details}{entry.actorName && <span className="log-actor"> by {entry.actorName}</span>}</span>
               </li>
             ))}
           </ul>
