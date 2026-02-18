@@ -46,7 +46,7 @@ export default function UnifiedDashboard() {
   const [adminSearchError, setAdminSearchError] = useState('');
   const [adminToggling, setAdminToggling] = useState(null);
   const [showInviteForm, setShowInviteForm] = useState(false);
-  const [inviteData, setInviteData] = useState({ name: '', email: '', password: '' });
+  const [inviteData, setInviteData] = useState({ name: '', email: '' });
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState('');
@@ -137,6 +137,7 @@ export default function UnifiedDashboard() {
   const [messageText, setMessageText] = useState('');
   const [sendingEncouragement, setSendingEncouragement] = useState(false);
   const [toast, setToast] = useState(null); // { message, color }
+  const [encouragePopup, setEncouragePopup] = useState(null); // uid of open popup
   const toastTimeout = useRef(null);
 
   // Track pending URL restoration
@@ -576,6 +577,24 @@ export default function UnifiedDashboard() {
     );
   };
 
+  // Render encourage bar at bottom of tiles (like Facebook Like/Comment/Share)
+  const renderEncourageBar = (recipientUid) => {
+    const sent = mySentToday[recipientUid] || {};
+    return (
+      <div className="encourage-bar" onClick={e => e.stopPropagation()}>
+        <button className={`encourage-bar-btn${sent.cheer ? ' sent' : ''}`} disabled={sent.cheer || sendingEncouragement} onClick={() => sendEncouragement(recipientUid, 'cheer')}>
+          👍 {sent.cheer ? 'Sent' : 'Cheer'}
+        </button>
+        <button className={`encourage-bar-btn${sent.nudge ? ' sent' : ''}`} disabled={sent.nudge || sendingEncouragement} onClick={() => sendEncouragement(recipientUid, 'nudge')}>
+          👊 {sent.nudge ? 'Sent' : 'Nudge'}
+        </button>
+        <button className={`encourage-bar-btn${sent.message ? ' sent' : ''}`} disabled={sent.message || sendingEncouragement} onClick={() => { if (!sent.message) setShowMessageInput(recipientUid); }}>
+          💬 {sent.message ? 'Sent' : 'Message'}
+        </button>
+      </div>
+    );
+  };
+
   // Render send buttons for a given uid
   const renderSendButtons = (recipientUid) => {
     const sent = mySentToday[recipientUid] || {};
@@ -613,6 +632,34 @@ export default function UnifiedDashboard() {
           <button className="save-btn" disabled={!messageText.trim() || sendingEncouragement} onClick={() => sendEncouragement(recipientUid, 'message', messageText)}>
             {sendingEncouragement ? 'Sending...' : 'Send'}
           </button>
+        </div>
+      </div>
+    );
+  };
+
+  // Render floating message modal (works from tiles on main dashboard)
+  const renderMessageModal = () => {
+    if (!showMessageInput) return null;
+    return (
+      <div className="modal-overlay" onClick={() => { setShowMessageInput(null); setMessageText(''); }}>
+        <div className="modal-content encouragement-message-modal" onClick={e => e.stopPropagation()}>
+          <h3>💬 Send a Message</h3>
+          <textarea
+            className="encouragement-message-input"
+            placeholder="Write an encouraging message..."
+            value={messageText}
+            onChange={(e) => setMessageText(e.target.value)}
+            maxLength={500}
+            rows={4}
+            autoFocus
+          />
+          <div className="encouragement-message-actions">
+            <span className="char-count">{messageText.length}/500</span>
+            <button className="cancel-btn" onClick={() => { setShowMessageInput(null); setMessageText(''); }}>Cancel</button>
+            <button className="save-btn" disabled={!messageText.trim() || sendingEncouragement} onClick={() => sendEncouragement(showMessageInput, 'message', messageText)}>
+              {sendingEncouragement ? 'Sending...' : 'Send'}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1713,12 +1760,8 @@ export default function UnifiedDashboard() {
 
   const handleInviteUser = async (e) => {
     e.preventDefault();
-    if (!inviteData.name || !inviteData.email || !inviteData.password) {
-      setInviteError('All fields are required');
-      return;
-    }
-    if (inviteData.password.length < 6) {
-      setInviteError('Password must be at least 6 characters');
+    if (!inviteData.name || !inviteData.email) {
+      setInviteError('Name and email are required');
       return;
     }
 
@@ -1728,16 +1771,17 @@ export default function UnifiedDashboard() {
 
     try {
       const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch('/api/invite-user', {
+      const response = await fetch('/api/send-invite', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`
         },
         body: JSON.stringify({
-          email: inviteData.email,
-          name: inviteData.name,
-          tempPassword: inviteData.password
+          email: inviteData.email.toLowerCase().trim(),
+          name: inviteData.name.trim(),
+          inviterName: user.displayName || 'Admin',
+          inviterUid: user.uid
         })
       });
 
@@ -1746,8 +1790,18 @@ export default function UnifiedDashboard() {
         throw new Error(data.error || 'Invite failed');
       }
 
-      setInviteSuccess(`User created! ${data.emailSent ? 'Invite email sent.' : 'Email not sent (configure Resend).'}`);
-      setInviteData({ name: '', email: '', password: '' });
+      // Store pending invite for auto-linking on signup
+      const emailKey = inviteData.email.toLowerCase().trim().replace(/[.]/g, '_');
+      await setDoc(doc(db, 'pendingInvites', emailKey), {
+        inviterUid: user.uid,
+        inviterName: user.displayName || 'Admin',
+        invitedEmail: inviteData.email.toLowerCase().trim(),
+        invitedName: inviteData.name.trim(),
+        createdAt: serverTimestamp()
+      });
+
+      setInviteSuccess('Invite sent!');
+      setInviteData({ name: '', email: '' });
 
       // Refresh search if we had a search query
       if (adminSearchQuery) {
@@ -2250,6 +2304,7 @@ export default function UnifiedDashboard() {
               <JournalingTile journals={counseleeJournals} role="counselor" onView={(j) => setViewingCounseleeJournal(j)} onAdd={() => setViewingCounseleeJournal({})} />
             </div>
           </div>
+          {renderMessageModal()}
           {renderToast()}
           {renderEncouragementDetailModal()}
         </main>
@@ -2487,6 +2542,7 @@ export default function UnifiedDashboard() {
               />
             </div>
           </div>
+          {renderMessageModal()}
           {renderToast()}
           {renderEncouragementDetailModal()}
         </main>
@@ -2643,23 +2699,25 @@ export default function UnifiedDashboard() {
                       className={`accountability-tile status-${status}`}
                       onClick={() => setSelectedWatchedUser(person)}
                     >
-                      <ProfilePhoto photoUrl={photoUrl} size="small" />
-                      <div className="accountability-tile-info">
-                        <div className="accountability-tile-name">{person.name}</div>
-                        <div className="accountability-tile-email">{person.email}</div>
-                        <div className="accountability-tile-meta">
-                          <span className="accountability-tile-status">
-                            {getAPStatusLabel(status)}
-                          </span>
+                      <div className="accountability-tile-top">
+                        <ProfilePhoto photoUrl={photoUrl} size="small" />
+                        <div className="accountability-tile-info">
+                          <div className="accountability-tile-name">{person.name}</div>
+                          <div className="accountability-tile-email">{person.email}</div>
+                          <div className="accountability-tile-meta">
+                            <span className="accountability-tile-status">
+                              {getAPStatusLabel(status)}
+                            </span>
+                          </div>
                         </div>
-                        {renderEncouragementCounters(person.uid, true)}
-                      </div>
-                      <div className="streak-circle-container">
-                        <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
-                          {streak}
+                        <div className="streak-circle-container">
+                          <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
+                            {streak}
+                          </div>
+                          <div className="streak-label">day streak</div>
                         </div>
-                        <div className="streak-label">day streak</div>
                       </div>
+                      {renderEncourageBar(person.uid)}
                     </div>
                   );
                 })}
@@ -2798,22 +2856,24 @@ export default function UnifiedDashboard() {
                     const behindCount = counseleeBehindStatus[counselee.id] || 0;
                     return (
                       <li key={counselee.id} className={`counselee-card clickable ${behindCount > 0 ? 'behind' : ''} ${counselee.graduated ? 'graduated' : ''}`} onClick={() => setSelectedCounselee(counselee)}>
-                        <ProfilePhoto photoUrl={counselee.photoUrl || counselee.counseleePhotoUrl} size="small" />
-                        <span className="status-dot" style={{ backgroundColor: getStatusColor(counselee) }}></span>
-                        <div className="counselee-info">
-                          <strong>{counselee.name}</strong>
-                          <span>{counselee.email || 'No email'}</span>
-                          {counselee.uid && renderEncouragementCounters(counselee.uid, true)}
+                        <div className="counselee-card-top">
+                          <ProfilePhoto photoUrl={counselee.photoUrl || counselee.counseleePhotoUrl} size="small" />
+                          <span className="status-dot" style={{ backgroundColor: getStatusColor(counselee) }}></span>
+                          <div className="counselee-info">
+                            <strong>{counselee.name}</strong>
+                            <span>{counselee.email || 'No email'}</span>
+                          </div>
+                          {!counselee.uid ? (
+                            <span className="no-login-badge">No login</span>
+                          ) : counselee.graduated ? (
+                            <span className="graduated-badge">Graduated</span>
+                          ) : behindCount > 0 ? (
+                            <span className="behind-badge">{behindCount} behind</span>
+                          ) : (
+                            <span className="streak">{counselee.currentStreak} day streak</span>
+                          )}
                         </div>
-                        {!counselee.uid ? (
-                          <span className="no-login-badge">No login</span>
-                        ) : counselee.graduated ? (
-                          <span className="graduated-badge">Graduated</span>
-                        ) : behindCount > 0 ? (
-                          <span className="behind-badge">{behindCount} behind</span>
-                        ) : (
-                          <span className="streak">{counselee.currentStreak} day streak</span>
-                        )}
+                        {counselee.uid && renderEncourageBar(counselee.uid)}
                       </li>
                     );
                   })}
@@ -2879,17 +2939,10 @@ export default function UnifiedDashboard() {
                     onChange={(e) => setInviteData({ ...inviteData, email: e.target.value })}
                     required
                   />
-                  <input
-                    type="text"
-                    placeholder="Temporary Password (min 6 chars)"
-                    value={inviteData.password}
-                    onChange={(e) => setInviteData({ ...inviteData, password: e.target.value })}
-                    required
-                  />
                   {inviteError && <p className="admin-error">{inviteError}</p>}
                   {inviteSuccess && <p className="admin-success">{inviteSuccess}</p>}
                   <button type="submit" disabled={inviteLoading}>
-                    {inviteLoading ? 'Creating...' : 'Create & Send Invite'}
+                    {inviteLoading ? 'Sending...' : 'Send Invite'}
                   </button>
                 </form>
               )}
@@ -2958,6 +3011,7 @@ export default function UnifiedDashboard() {
                         <th>Email</th>
                         <th>Last Login</th>
                         <th>Last Activity</th>
+                        <th>APs</th>
                         <th>Role</th>
                       </tr>
                     </thead>
@@ -2972,6 +3026,7 @@ export default function UnifiedDashboard() {
                           <td className="email-cell">{u.email}</td>
                           <td className="time-cell">{formatTimeAgo(u.lastLogin)}</td>
                           <td className="time-cell">{formatTimeAgo(u.lastActivity)}</td>
+                          <td className="ap-count-cell">{u.apCount || 0}</td>
                           <td>
                             {u.isSuperAdmin && <span className="role-badge superadmin">Admin</span>}
                             {u.isCounselor && !u.isSuperAdmin && <span className="role-badge counselor">Counselor</span>}
@@ -3056,6 +3111,7 @@ export default function UnifiedDashboard() {
           </>
         )}
       </main>
+      {renderMessageModal()}
       {renderToast()}
       {renderEncouragementDetailModal()}
     </div>

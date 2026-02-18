@@ -310,47 +310,113 @@ export const calculateAccountabilityStatus = (homework) => {
 };
 
 /**
- * Calculate AP streak live from homework completions (consecutive days with activity)
+ * Calculate day streak from homework completions.
+ * Rules:
+ *   - Streak INCREASES on any day with at least 1 completion
+ *   - Streak STAGNATES (holds) on days with no completion IF all items still have cushion
+ *   - Streak RESETS on days where any item became irrecoverably behind
  * @param {Array} homework - Array of homework items
- * @returns {number} Number of consecutive days with activity
+ * @returns {number} Day streak count
  */
 export const calculateAPStreak = (homework) => {
   if (!homework || homework.length === 0) return 0;
   const activeHomework = homework.filter(h => h.status === 'active');
   if (activeHomework.length === 0) return 0;
 
-  // Collect ALL completion dates across all homework items
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+  // Collect completion dates from ALL homework (not just active)
+  // so cancelled/completed items' past activity still counts
   const daySet = new Set();
-  for (const hw of activeHomework) {
-    const completions = hw.completions || [];
-    for (const c of completions) {
+  let earliestCompletionMs = Infinity;
+  for (const hw of homework) {
+    for (const c of (hw.completions || [])) {
       const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      daySet.add(new Date(cDate.getFullYear(), cDate.getMonth(), cDate.getDate()).getTime());
+      const dayMs = new Date(cDate.getFullYear(), cDate.getMonth(), cDate.getDate()).getTime();
+      daySet.add(dayMs);
+      if (dayMs < earliestCompletionMs) earliestCompletionMs = dayMs;
     }
   }
 
   if (daySet.size === 0) return 0;
 
-  // Count consecutive days backward from today
-  const now = new Date();
-  const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const msPerDay = 24 * 60 * 60 * 1000;
-  let streak = 0;
+  // Check if any ACTIVE item is irrecoverably behind on a given date
+  const isAnyItemBehindOnDate = (checkDate) => {
+    for (const hw of activeHomework) {
+      const weeklyTarget = hw.weeklyTarget || 7;
+      const dailyCap = hw.dailyCap || 999;
+      const maxPerDay = dailyCap < 999 ? dailyCap : 1;
 
-  // Start from today
-  let checkDay = todayMs;
-  while (daySet.has(checkDay)) {
-    streak++;
-    checkDay -= msPerDay;
-  }
+      let rawAssigned;
+      if (hw.assignedDate?.toDate) rawAssigned = hw.assignedDate.toDate();
+      else if (hw.assignedDate) rawAssigned = new Date(hw.assignedDate);
+      else continue; // no assigned date, skip
 
-  // If nothing today, check if yesterday had activity (streak from yesterday backward)
-  if (streak === 0) {
-    checkDay = todayMs - msPerDay;
-    while (daySet.has(checkDay)) {
-      streak++;
-      checkDay -= msPerDay;
+      // Normalize assignedDate to midnight for consistent day arithmetic
+      const assignedMs = new Date(rawAssigned.getFullYear(), rawAssigned.getMonth(), rawAssigned.getDate()).getTime();
+
+      // Don't check days before assignment
+      if (checkDate.getTime() < assignedMs) continue;
+
+      const msPerWeek = 7 * msPerDay;
+      const weeksSinceAssigned = Math.max(0, Math.floor((checkDate.getTime() - assignedMs) / msPerWeek));
+      const weekStartMs = assignedMs + (weeksSinceAssigned * msPerWeek);
+
+      // Count completions this homework-week up to and including checkDate
+      let weekCompletions = 0;
+      const dailyCounts = {};
+      for (const c of (hw.completions || [])) {
+        const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
+        const cMs = new Date(cDate.getFullYear(), cDate.getMonth(), cDate.getDate()).getTime();
+        if (cMs >= weekStartMs && cMs <= checkDate.getTime()) {
+          const dayKey = cMs;
+          dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
+        }
+      }
+      for (const count of Object.values(dailyCounts)) {
+        weekCompletions += Math.min(count, dailyCap);
+      }
+
+      // Days remaining in week from this day forward (including this day)
+      const dayOfWeek = Math.floor((checkDate.getTime() - weekStartMs) / msPerDay);
+      const daysRemaining = 7 - dayOfWeek;
+      const maxPossibleRemaining = daysRemaining * maxPerDay;
+
+      // Week 1 pro-rate
+      const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+      const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
+
+      if ((weekCompletions + maxPossibleRemaining) < effectiveTarget) {
+        return true; // irrecoverably behind
+      }
     }
+    return false;
+  };
+
+  // Walk backward from today
+  let streak = 0;
+  let checkDayMs = todayMs;
+
+  // Stop at earliest completion or 365 days, whichever is sooner
+  const stopMs = Math.max(earliestCompletionMs - msPerDay, todayMs - 365 * msPerDay);
+
+  while (checkDayMs >= stopMs) {
+    const checkDate = new Date(checkDayMs);
+    const hasActivity = daySet.has(checkDayMs);
+
+    if (hasActivity) {
+      // Did something → streak increases
+      streak++;
+    } else {
+      // Did nothing → check if any active item was irrecoverably behind
+      if (isAnyItemBehindOnDate(checkDate)) {
+        break; // behind with no recovery → streak ends
+      }
+      // Has cushion → stagnate (don't increment, don't break)
+    }
+    checkDayMs -= msPerDay;
   }
 
   return streak;

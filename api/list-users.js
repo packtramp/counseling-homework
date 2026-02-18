@@ -130,6 +130,15 @@ export default async function handler(req, res) {
     // Get all users from Firestore
     const usersSnapshot = await db.collection('users').get();
 
+    // Pre-compute counselee counts per counselor
+    const counseleeCounts = {};
+    for (const doc of usersSnapshot.docs) {
+      const cId = doc.data().counselorId;
+      if (cId && cId !== doc.id) {
+        counseleeCounts[cId] = (counseleeCounts[cId] || 0) + 1;
+      }
+    }
+
     const users = [];
     for (const userDoc of usersSnapshot.docs) {
       const userData = userDoc.data();
@@ -172,6 +181,12 @@ export default async function handler(req, res) {
         }
       }
 
+      // AP count: watchingUsers + counselor (if has one) + counselees (if counselor)
+      const watchingCount = (userData.watchingUsers || []).length;
+      const hasCounselor = (userData.counselorId && userData.counselorId !== uid) ? 1 : 0;
+      const myCounselees = counseleeCounts[uid] || 0;
+      const apCount = watchingCount + hasCounselor + myCounselees;
+
       users.push({
         uid: uid,
         name: userData.name || '',
@@ -180,7 +195,8 @@ export default async function handler(req, res) {
         isSuperAdmin: userData.isSuperAdmin || false,
         createdAt: userData.createdAt,
         lastLogin: userData.lastLogin,
-        lastActivity: lastActivity
+        lastActivity: lastActivity,
+        apCount
       });
     }
 

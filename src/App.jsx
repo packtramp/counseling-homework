@@ -7,6 +7,7 @@ import UnifiedDashboard from './pages/UnifiedDashboard';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import SmsOptIn from './pages/SmsOptIn';
+import HelpPage from './pages/HelpPage';
 import './App.css';
 
 function EmailVerifyGate() {
@@ -127,6 +128,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/tos" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route path="/sms-optin" element={<SmsOptIn />} />
           <Route
             path="/"

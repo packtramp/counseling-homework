@@ -525,6 +525,7 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
         </div>
 
         <div style={{ padding: '8px 16px 12px', borderTop: '1px solid #e2e8f0', textAlign: 'center' }}>
+          <a href="/help" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: '#718096', marginRight: 12 }}>Help</a>
           <a href="/tos" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: '#718096', marginRight: 12 }}>Terms of Service</a>
           <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.8rem', color: '#718096' }}>Privacy Policy</a>
         </div>

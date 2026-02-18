@@ -188,14 +188,14 @@ export default function HomeworkTile({
     return { streak, isPositive, totalWeeks: weekResults.length };
   };
 
-  // Filter homework: Done tab = cancelled, completed status, completed today, OR weekly target met
+  // Filter homework: Done tab = cancelled, completed status, completed today (but NOT weekly-complete-only)
+  // Weekly-complete items stay in Current tab so overachievers can keep checking off
   const activeHomework = homework.filter(h =>
     (!h.status || h.status === 'active') &&
-    !isWeeklyComplete(h) &&
     (isCounselor ? (h.status !== 'cancelled' && h.status !== 'completed' && !isCompletedToday(h)) : !isCompletedToday(h))
   );
   const completedHomework = homework.filter(h =>
-    h.status === 'cancelled' || h.status === 'completed' || isCompletedToday(h) || isWeeklyComplete(h)
+    h.status === 'cancelled' || h.status === 'completed' || isCompletedToday(h)
   );
 
   // Get change notes for counselee edits
