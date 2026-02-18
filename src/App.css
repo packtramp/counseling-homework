@@ -4031,9 +4031,9 @@ button.counselor-check-indicator.clickable-check:active {
 }
 
 .streak-badge {
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 12px;
   white-space: nowrap;
 }
@@ -6961,6 +6961,16 @@ button.counselor-check-indicator.clickable-check:active {
   margin-top: 0;
 }
 
+/* Larger encouragement counters in greeting row (2-2.5x default) */
+.greeting-row .encouragement-counters {
+  gap: 0.6rem;
+}
+.greeting-row .encouragement-counter {
+  font-size: 1.6rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 14px;
+}
+
 /* Encourage bar at bottom of tiles (Facebook-style) */
 .encourage-bar {
   display: flex;
@@ -7140,6 +7150,14 @@ button.counselor-check-indicator.clickable-check:active {
   }
   .encouragement-counter {
     padding: 0.05rem 0.2rem;
+  }
+  /* Keep greeting-row counters large on mobile too */
+  .greeting-row .encouragement-counter {
+    font-size: 1.4rem;
+    padding: 0.15rem 0.4rem;
+  }
+  .greeting-row .encouragement-counters {
+    gap: 0.4rem;
   }
   .encouragement-actions {
     flex-direction: column;

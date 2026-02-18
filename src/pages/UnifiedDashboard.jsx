@@ -2315,7 +2315,7 @@ export default function UnifiedDashboard() {
             lastSeen={myData?.onboardingLastSeen}
             onDismiss={(stepIndex) => {
               const userRef = doc(db, 'users', user.uid);
-              updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: serverTimestamp() });
+              updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: Timestamp.now() });
             }}
           />
         </main>
@@ -2561,7 +2561,7 @@ export default function UnifiedDashboard() {
             lastSeen={myData?.onboardingLastSeen}
             onDismiss={(stepIndex) => {
               const userRef = doc(db, 'users', user.uid);
-              updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: serverTimestamp() });
+              updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: Timestamp.now() });
             }}
           />
         </main>
@@ -3138,7 +3138,7 @@ export default function UnifiedDashboard() {
         lastSeen={myData?.onboardingLastSeen}
         onDismiss={(stepIndex) => {
           const userRef = doc(db, 'users', user.uid);
-          updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: serverTimestamp() });
+          updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: Timestamp.now() });
         }}
       />
     </div>
