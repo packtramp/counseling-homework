@@ -361,7 +361,8 @@ export default function CounselorDashboard() {
           role: 'counselee',
           counselorId: user.uid,
           counseleeDocId: counseleeRef.id,
-          createdAt: serverTimestamp()
+          createdAt: serverTimestamp(),
+          onboardingStep: 0
         });
       }
 

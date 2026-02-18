@@ -7152,3 +7152,68 @@ button.counselor-check-indicator.clickable-check:active {
     font-size: 0.65rem;
   }
 }
+
+/* Onboarding Modal */
+.onboarding-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  padding: 1rem;
+}
+.onboarding-modal {
+  background: white;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 400px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+  text-align: center;
+}
+.onboarding-header {
+  margin-bottom: 0.75rem;
+}
+.onboarding-step-badge {
+  display: inline-block;
+  background: #ebf8ff;
+  color: #2b6cb0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+}
+.onboarding-title {
+  font-size: 1.15rem;
+  color: #2d3748;
+  margin: 0 0 0.75rem;
+}
+.onboarding-body {
+  text-align: left;
+  font-size: 0.9rem;
+  color: #4a5568;
+  line-height: 1.5;
+}
+.onboarding-body p {
+  margin: 0.4rem 0;
+}
+.onboarding-dismiss-btn {
+  margin-top: 1.25rem;
+  background: #3182ce;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 2rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.onboarding-dismiss-btn:hover {
+  background: #2b6cb0;
+}

@@ -21,6 +21,7 @@ import AccountabilityModal from '../components/AccountabilityModal';
 import AccountabilityPartnersTile from '../components/AccountabilityPartnersTile';
 import AccountabilityPartnersModal from '../components/AccountabilityPartnersModal';
 import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateWeekStreak } from '../utils/homeworkHelpers';
+import OnboardingModal from '../components/OnboardingModal';
 
 // Helper to read/write URL params for state persistence
 const getUrlParams = () => new URLSearchParams(window.location.search);
@@ -1404,7 +1405,8 @@ export default function UnifiedDashboard() {
           role: 'counselee',
           counselorId: user.uid,
           counseleeDocId: counseleeRef.id,
-          createdAt: serverTimestamp()
+          createdAt: serverTimestamp(),
+          onboardingStep: 0
         });
       }
 
@@ -1465,7 +1467,8 @@ export default function UnifiedDashboard() {
       role: 'counselee',
       counselorId: user.uid,
       counseleeDocId: selectedCounselee.id,
-      createdAt: serverTimestamp()
+      createdAt: serverTimestamp(),
+      onboardingStep: 0
     });
 
     // Update local state
@@ -2307,6 +2310,14 @@ export default function UnifiedDashboard() {
           {renderMessageModal()}
           {renderToast()}
           {renderEncouragementDetailModal()}
+          <OnboardingModal
+            step={myData?.onboardingStep}
+            lastSeen={myData?.onboardingLastSeen}
+            onDismiss={(stepIndex) => {
+              const userRef = doc(db, 'users', user.uid);
+              updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: serverTimestamp() });
+            }}
+          />
         </main>
       </div>
     );
@@ -2545,6 +2556,14 @@ export default function UnifiedDashboard() {
           {renderMessageModal()}
           {renderToast()}
           {renderEncouragementDetailModal()}
+          <OnboardingModal
+            step={myData?.onboardingStep}
+            lastSeen={myData?.onboardingLastSeen}
+            onDismiss={(stepIndex) => {
+              const userRef = doc(db, 'users', user.uid);
+              updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: serverTimestamp() });
+            }}
+          />
         </main>
       </div>
     );
@@ -3114,6 +3133,14 @@ export default function UnifiedDashboard() {
       {renderMessageModal()}
       {renderToast()}
       {renderEncouragementDetailModal()}
+      <OnboardingModal
+        step={myData?.onboardingStep}
+        lastSeen={myData?.onboardingLastSeen}
+        onDismiss={(stepIndex) => {
+          const userRef = doc(db, 'users', user.uid);
+          updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: serverTimestamp() });
+        }}
+      />
     </div>
   );
 }

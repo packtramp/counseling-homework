@@ -61,7 +61,8 @@ export default function Login() {
           tosAcceptedAt: serverTimestamp(),
           emailReminders: true,
           smsReminders: false,
-          reminderSchedule: defaultSchedule
+          reminderSchedule: defaultSchedule,
+          onboardingStep: 0
         });
 
         // Initialize self-counselor data structure

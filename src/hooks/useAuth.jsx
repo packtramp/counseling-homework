@@ -31,7 +31,8 @@ export function AuthProvider({ children }) {
               role: 'counselee',
               counselorId: linkData.counselorId,
               counseleeDocId: linkData.counseleeDocId,
-              createdAt: new Date()
+              createdAt: new Date(),
+              onboardingStep: 0
             };
             await setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
             setUserProfile(newProfile);

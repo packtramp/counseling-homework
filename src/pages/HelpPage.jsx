@@ -21,6 +21,10 @@ export default function HelpPage() {
         &larr; Back
       </button>
 
+      <div style={{ background: '#ebf8ff', border: '1px solid #bee3f8', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: '0.85rem', color: '#2b6cb0', lineHeight: 1.5 }}>
+        <strong>Beta Notice:</strong> This app is currently in beta. Please do not enter any personal information you would not want others to discover. The app is in active development and data may not be fully secure. We are continuously testing and improving security as we go.
+      </div>
+
       <h1 style={{ fontSize: '1.5rem', marginBottom: 4 }}>Help &amp; How It Works</h1>
       <p style={{ color: '#718096', fontSize: '0.85rem', marginTop: 0 }}>Everything you need to know about Counseling Homework</p>
 
