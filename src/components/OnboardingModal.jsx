@@ -90,6 +90,16 @@ const ONBOARDING_MESSAGES = [
         <p>Each sends an immediate email to encourage them.</p>
       </>
     )
+  },
+  {
+    id: 'sms-phone',
+    title: 'Get SMS Reminders',
+    body: (
+      <>
+        <p>Want text message reminders? Add your <strong>phone number</strong> in <strong>Account Settings</strong> and turn on SMS reminders.</p>
+        <p>You'll get up to 3 texts a day at the times you choose to help you stay on track with your homework.</p>
+      </>
+    )
   }
 ];
 

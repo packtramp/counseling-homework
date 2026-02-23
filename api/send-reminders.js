@@ -106,6 +106,36 @@ export default async function handler(req, res) {
     const d = userDoc.data();
     return res.status(200).json({ uid, data: d });
   }
+  // Admin: delete a user (Firebase Auth + Firestore user doc + self-counselor doc)
+  if (req.query?.deleteUser) {
+    const uid = req.query.deleteUser;
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+    const d = userDoc.data();
+    const deleted = { uid, name: d.name, email: d.email, steps: [] };
+    try { await admin.auth().deleteUser(uid); deleted.steps.push('auth'); } catch (e) { deleted.steps.push('auth_failed: ' + e.message); }
+    try { await db.collection('users').doc(uid).delete(); deleted.steps.push('userDoc'); } catch (e) { deleted.steps.push('userDoc_failed: ' + e.message); }
+    try { await db.doc(`counselors/${uid}/counselees/${uid}`).delete(); deleted.steps.push('selfCounselorDoc'); } catch (e) { deleted.steps.push('selfDoc_failed: ' + e.message); }
+    return res.status(200).json({ deleted });
+  }
+  // Admin: update a user's reminder schedule slots
+  // Usage: ?updateSchedule=<uid>&slot1=09:00&slot2=13:00&slot3=21:00
+  if (req.query?.updateSchedule) {
+    const uid = req.query.updateSchedule;
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+    const d = userDoc.data();
+    const schedule = d.reminderSchedule || {};
+    const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+    for (const day of days) {
+      if (!schedule[day]) schedule[day] = { slot1: '09:00', slot2: '15:00', slot3: '20:00' };
+      if (req.query.slot1 !== undefined) schedule[day].slot1 = req.query.slot1;
+      if (req.query.slot2 !== undefined) schedule[day].slot2 = req.query.slot2;
+      if (req.query.slot3 !== undefined) schedule[day].slot3 = req.query.slot3;
+    }
+    await db.collection('users').doc(uid).update({ reminderSchedule: schedule });
+    return res.status(200).json({ updated: true, uid, name: d.name, schedule });
+  }
   if (req.query?.listUsers) {
     const allUsers = await db.collection('users').get();
     const users = allUsers.docs.map(d => ({ uid: d.id, name: d.data().name, email: d.data().email }));
@@ -769,6 +799,7 @@ export default async function handler(req, res) {
           if (c.status === 'inactive') continue;
           if (c.graduated) continue; // Skip graduated counselees from daily summary
           if (c.isSelf) continue; // Skip counselor's own self-counselor doc
+          if (!c.uid) continue; // Skip counselees with no account (counselor-only tracking)
 
           const hwSnap = await db.collection(`counselors/${counselorId}/counselees/${counseleeDoc.id}/homework`).get();
           const hwItems = [];

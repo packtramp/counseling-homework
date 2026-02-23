@@ -147,6 +147,15 @@ input::-webkit-calendar-picker-indicator {
   font-size: 0.9rem;
 }
 
+.hp-field {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
 button {
   width: 100%;
   padding: 0.75rem;
@@ -1251,6 +1260,11 @@ button:disabled {
 }
 
 .homework-status-item.behind .homework-status-progress {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.homework-status-item.required-today .homework-status-title {
   color: #dc2626;
   font-weight: 600;
 }

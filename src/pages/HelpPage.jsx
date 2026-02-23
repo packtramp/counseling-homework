@@ -161,14 +161,24 @@ export default function HelpPage() {
 
         <h3 style={h3Style}>AP Tiles</h3>
         <p style={pStyle}>
-          Each AP appears as a color-coded tile on your dashboard:
+          Each AP appears as a color-coded tile on your dashboard. The color and label tell you where they stand:
         </p>
         <ul style={ulStyle}>
-          <li><strong style={{ color: '#38a169' }}>Green</strong> — All homework done for today</li>
-          <li><strong style={{ color: '#d69e2e' }}>Yellow</strong> — Some or no homework done today (can still catch up)</li>
-          <li><strong style={{ color: '#e53e3e' }}>Red</strong> — Missed homework this week (can't catch up)</li>
-          <li><strong style={{ color: '#718096' }}>Gray</strong> — No data yet or inactive</li>
+          <li><strong style={{ color: '#38a169' }}>Green — "On track"</strong> — They've completed their homework for today</li>
+          <li><strong style={{ color: '#d69e2e' }}>Yellow — "Required today"</strong> — They need to complete something today or they'll fall behind this week</li>
+          <li><strong style={{ color: '#718096' }}>Gray — "No activity today"</strong> — They haven't done anything today, but still have buffer days to catch up this week</li>
+          <li><strong style={{ color: '#e53e3e' }}>Red — "Behind"</strong> — They've missed enough that they can't catch up this week even with max effort</li>
         </ul>
+        <p style={pStyle}>
+          Each tile also shows two streak circles:
+        </p>
+        <ul style={ulStyle}>
+          <li><strong style={{ color: '#38a169' }}>Green circle</strong> — Their <strong>day streak</strong> (consecutive days with at least one completion)</li>
+          <li><strong style={{ color: '#2b6cb0' }}>Blue circle</strong> — Their <strong>week streak</strong> (consecutive weeks with at least one completion)</li>
+        </ul>
+        <p style={pStyle}>
+          A gray circle with "0" means their streak has reset. See the <strong>Day Streak</strong> and <strong>Week Streak</strong> sections above for how streaks grow and reset.
+        </p>
       </div>
 
       {/* Encouragement System */}

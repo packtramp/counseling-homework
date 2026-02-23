@@ -11,6 +11,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [website, setWebsite] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignup, setIsSignup] = useState(searchParams.get('signup') === 'true');
@@ -20,6 +21,11 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (website) {
+      setError('Could not create account. Please try again.');
+      return;
+    }
 
     if (isSignup && !name.trim()) {
       setError('Name is required');
@@ -209,6 +215,18 @@ export default function Login() {
               />
             </div>
           )}
+          <div className="form-group hp-field" aria-hidden="true">
+            <label htmlFor="website">Website</label>
+            <input
+              type="text"
+              id="website"
+              name="website"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              tabIndex={-1}
+              autoComplete="off"
+            />
+          </div>
           {error && <div className="error">{error}</div>}
           {isSignup && (
             <p style={{ fontSize: '0.8rem', color: '#718096', margin: '8px 0 4px', lineHeight: 1.5 }}>

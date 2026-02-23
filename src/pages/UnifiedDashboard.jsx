@@ -2314,8 +2314,8 @@ export default function UnifiedDashboard() {
             step={myData?.onboardingStep}
             lastSeen={myData?.onboardingLastSeen}
             onDismiss={(stepIndex) => {
-              const userRef = doc(db, 'users', user.uid);
-              updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: Timestamp.now() });
+              const myRef = doc(db, getMyBasePath());
+              updateDoc(myRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: Timestamp.now() });
             }}
           />
         </main>
@@ -2560,8 +2560,8 @@ export default function UnifiedDashboard() {
             step={myData?.onboardingStep}
             lastSeen={myData?.onboardingLastSeen}
             onDismiss={(stepIndex) => {
-              const userRef = doc(db, 'users', user.uid);
-              updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: Timestamp.now() });
+              const myRef = doc(db, getMyBasePath());
+              updateDoc(myRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: Timestamp.now() });
             }}
           />
         </main>
@@ -3137,8 +3137,8 @@ export default function UnifiedDashboard() {
         step={myData?.onboardingStep}
         lastSeen={myData?.onboardingLastSeen}
         onDismiss={(stepIndex) => {
-          const userRef = doc(db, 'users', user.uid);
-          updateDoc(userRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: Timestamp.now() });
+          const myRef = doc(db, getMyBasePath());
+          updateDoc(myRef, { onboardingStep: stepIndex + 1, onboardingLastSeen: Timestamp.now() });
         }}
       />
     </div>

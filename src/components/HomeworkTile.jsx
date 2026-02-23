@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import RichTextEditor from './RichTextEditor';
-import { getCompletionsForDay, isCompletedToday, getTodayProgress, getWeeklyProgress, isItemBehind } from '../utils/homeworkHelpers';
+import { getCompletionsForDay, isCompletedToday, getTodayProgress, getWeeklyProgress, isItemBehind, isRequiredToday } from '../utils/homeworkHelpers';
 
 /**
  * Reusable Homework Tile with Current/Done tabs
@@ -380,6 +380,7 @@ export default function HomeworkTile({
                 const isCompleting = completingId === item.id;
                 const isEditing = editingHomework?.id === item.id;
                 const isBehind = isItemBehind(item);
+                const requiredToday = isRequiredToday(item);
 
                 if (isEditing) {
                   return (
@@ -493,7 +494,7 @@ export default function HomeworkTile({
                 if (isCounselor) {
                   const isThinkList = !!item.linkedThinkListId;
                   return (
-                    <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${isThinkList ? 'thinklist-item' : ''}`}
+                    <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'thinklist-item' : ''}`}
                       onClick={isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : undefined}
                       style={isThinkList && onOpenThinkList ? { cursor: 'pointer' } : undefined}
                     >
@@ -534,7 +535,7 @@ export default function HomeworkTile({
                 // B-side: same compact layout as A-side, but with interactive check button
                 const isThinkList = !!item.linkedThinkListId;
                 return (
-                  <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${isThinkList ? 'thinklist-item' : ''}`}
+                  <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'thinklist-item' : ''}`}
                     onClick={isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : undefined}
                     style={isThinkList && onOpenThinkList ? { cursor: 'pointer' } : undefined}
                   >

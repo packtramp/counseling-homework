@@ -78,7 +78,7 @@ describe('getNextOnboardingMessage', () => {
     }
   });
 
-  it('has exactly 8 messages', () => {
-    expect(MESSAGE_COUNT).toBe(8);
+  it('has exactly 9 messages', () => {
+    expect(MESSAGE_COUNT).toBe(9);
   });
 });

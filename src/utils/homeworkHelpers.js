@@ -155,6 +155,67 @@ export const isItemBehind = (item, now = new Date()) => {
 };
 
 /**
+ * Check if homework item MUST be completed today or user will be irrecoverably behind.
+ * Returns false if already behind (red) or already done today (green) — only true for the "warning" state.
+ * @param {Object} item - Homework item
+ * @param {Date} [now] - Optional current date (for testing)
+ * @returns {boolean} True if skipping today means can't catch up
+ */
+export const isRequiredToday = (item, now = new Date()) => {
+  if (item.status === 'cancelled') return false;
+  if (isItemBehind(item, now)) return false;
+  if (isCompletedToday(item, now)) return false;
+
+  const completions = item.completions || [];
+  const weeklyTarget = item.weeklyTarget || 7;
+  const dailyCap = item.dailyCap || 999;
+
+  let assignedDate;
+  if (item.assignedDate?.toDate) {
+    assignedDate = item.assignedDate.toDate();
+  } else if (item.assignedDate) {
+    assignedDate = new Date(item.assignedDate);
+  } else {
+    assignedDate = now;
+  }
+
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const msPerWeek = 7 * msPerDay;
+  const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
+
+  // Group completions by day within this week
+  const dailyCounts = {};
+  completions.forEach(c => {
+    const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
+    const weekNum = Math.floor((cDate - assignedDate) / msPerWeek);
+    if (weekNum === weeksSinceAssigned) {
+      const dayKey = cDate.toDateString();
+      dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
+    }
+  });
+
+  let currentWeekCompletions = 0;
+  for (const count of Object.values(dailyCounts)) {
+    currentWeekCompletions += Math.min(count, dailyCap);
+  }
+
+  const weekStartMs = assignedDate.getTime() + (weeksSinceAssigned * msPerWeek);
+  const dayOfWeek = Math.floor((now.getTime() - weekStartMs) / msPerDay);
+  const daysRemaining = 7 - dayOfWeek;
+
+  const maxPerDay = dailyCap < 999 ? dailyCap : 1;
+  const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+  const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
+
+  // If skipping today (daysRemaining - 1), can they still meet the target?
+  if (daysRemaining >= 1) {
+    const maxWithoutToday = currentWeekCompletions + ((daysRemaining - 1) * maxPerDay);
+    return maxWithoutToday < effectiveTarget;
+  }
+  return false;
+};
+
+/**
  * Format phone number as (xxx) xxx-xxxx
  * @param {string} phone - Raw phone number
  * @returns {string} Formatted phone number
