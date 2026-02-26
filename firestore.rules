@@ -52,6 +52,30 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
+    // Prayer Requests - user owns their own PRs, APs + counselors can read
+    match /users/{userId}/prayerRequests/{requestId} {
+      // Owner can CRUD their own prayer requests
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // APs can read (via accountabilityPartnerUids on the PR owner's user doc)
+      allow read: if request.auth != null &&
+        request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.accountabilityPartnerUids;
+      // Counselor can read their counselee's prayer requests
+      allow read: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(userId)).data.counselorId == request.auth.uid;
+
+      // Prayers subcollection - records of who prayed
+      match /prayers/{prayerId} {
+        // Owner of the PR can read prayers on their requests
+        allow read: if request.auth != null && request.auth.uid == userId;
+        // APs can read and write prayers (to record "prayed" clicks)
+        allow read, create: if request.auth != null &&
+          request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.accountabilityPartnerUids;
+        // Counselor can read and write prayers
+        allow read, create: if request.auth != null &&
+          get(/databases/$(database)/documents/users/$(userId)).data.counselorId == request.auth.uid;
+      }
+    }
+
     // Counselor data - counselor can access their own counselees
     match /counselors/{counselorId}/counselees/{counseleeId} {
       allow read, write: if request.auth != null && request.auth.uid == counselorId;

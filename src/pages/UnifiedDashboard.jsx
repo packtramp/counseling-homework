@@ -22,6 +22,8 @@ import AccountabilityPartnersTile from '../components/AccountabilityPartnersTile
 import AccountabilityPartnersModal from '../components/AccountabilityPartnersModal';
 import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateWeekStreak } from '../utils/homeworkHelpers';
 import OnboardingModal from '../components/OnboardingModal';
+import PrayerRequestsTile from '../components/PrayerRequestsTile';
+import PrayerRequestPage from '../components/PrayerRequestPage';
 
 // Helper to read/write URL params for state persistence
 const getUrlParams = () => new URLSearchParams(window.location.search);
@@ -92,6 +94,7 @@ export default function UnifiedDashboard() {
   const [viewingMyHeartJournal, setViewingMyHeartJournal] = useState(null);
   const [viewingMyThinkList, setViewingMyThinkList] = useState(null);
   const [viewingMyJournal, setViewingMyJournal] = useState(null);
+  const [viewingMyPrayerRequest, setViewingMyPrayerRequest] = useState(null);
   const [showMyActivityHistory, setShowMyActivityHistory] = useState(false);
   const [selectedMySession, setSelectedMySession] = useState(null);
   const [mySessionNotes, setMySessionNotes] = useState('');
@@ -128,6 +131,11 @@ export default function UnifiedDashboard() {
   const [viewingCounseleeThinkList, setViewingCounseleeThinkList] = useState(null);
   const [viewingCounseleeJournal, setViewingCounseleeJournal] = useState(null);
   const [showCounseleeActivityHistory, setShowCounseleeActivityHistory] = useState(false);
+
+  // Prayer request system state
+  const [myPrayerCount, setMyPrayerCount] = useState(0); // Total prayers others made for my PRs
+  const [showPrayerDetail, setShowPrayerDetail] = useState(false); // Show prayer counter pop-out
+  const [prayerDetailList, setPrayerDetailList] = useState([]); // Recent prayers for pop-out
 
   // Encouragement system state
   const [encouragementCounts, setEncouragementCounts] = useState({}); // { [uid]: { cheers, nudges, messages } }
@@ -956,6 +964,8 @@ export default function UnifiedDashboard() {
       setSelectedWatchedSession(null);
     } else if (selectedWatchedUser) {
       setSelectedWatchedUser(null);
+    } else if (viewingMyPrayerRequest) {
+      setViewingMyPrayerRequest(null);
     } else if (viewingMyJournal) {
       setViewingMyJournal(null);
     } else if (showMyActivityHistory) {
@@ -980,7 +990,7 @@ export default function UnifiedDashboard() {
       setSelectedCounselee(null);
     }
   }, [viewingWatchedJournal, showWatchedActivityHistory, viewingWatchedThinkList, viewingWatchedHeartJournal,
-      selectedWatchedSession, selectedWatchedUser, viewingMyJournal, showMyActivityHistory, viewingMyThinkList,
+      selectedWatchedSession, selectedWatchedUser, viewingMyPrayerRequest, viewingMyJournal, showMyActivityHistory, viewingMyThinkList,
       viewingMyHeartJournal, selectedMySession, viewingCounseleeJournal, showCounseleeActivityHistory,
       viewingCounseleeThinkList, viewingCounseleeHeartJournal, selectedCounseleeSession, selectedCounselee]);
 
@@ -989,13 +999,14 @@ export default function UnifiedDashboard() {
     viewingThinkList: viewingMyThinkList || viewingCounseleeThinkList || viewingWatchedThinkList,
     showActivityHistory: showMyActivityHistory || showCounseleeActivityHistory || showWatchedActivityHistory,
     viewingJournal: viewingMyJournal || viewingCounseleeJournal || viewingWatchedJournal,
+    viewingPrayerRequest: viewingMyPrayerRequest,
     selectedSession: selectedMySession || selectedCounseleeSession,
     selectedCounselee,
     selectedWatchedUser
   }), [viewingMyHeartJournal, viewingCounseleeHeartJournal, viewingWatchedHeartJournal,
       viewingMyThinkList, viewingCounseleeThinkList, viewingWatchedThinkList,
       showMyActivityHistory, showCounseleeActivityHistory, showWatchedActivityHistory,
-      viewingMyJournal, viewingCounseleeJournal, viewingWatchedJournal,
+      viewingMyJournal, viewingCounseleeJournal, viewingWatchedJournal, viewingMyPrayerRequest,
       selectedMySession, selectedCounseleeSession, selectedCounselee, selectedWatchedUser]);
 
   useAppNavigation(viewState, handleGoBack);
@@ -1379,7 +1390,7 @@ export default function UnifiedDashboard() {
         currentStreak: 0,
         createdAt: serverTimestamp(),
         emailReminders: !!hasEmail,
-        smsReminders: false,
+        smsReminders: true,
         reminderSchedule: defaultSchedule
       };
       if (hasEmail) {
@@ -1993,6 +2004,19 @@ export default function UnifiedDashboard() {
     );
   }
 
+  if (viewingMyPrayerRequest) {
+    return (
+      <PrayerRequestPage
+        user={user}
+        userProfile={userProfile}
+        editingPR={viewingMyPrayerRequest.id ? viewingMyPrayerRequest : null}
+        onClose={() => setViewingMyPrayerRequest(null)}
+        onSaved={() => setViewingMyPrayerRequest(null)}
+        getAuthToken={() => auth.currentUser.getIdToken()}
+      />
+    );
+  }
+
   // "Me" section session detail view
   if (selectedMySession) {
     // Session navigation
@@ -2246,7 +2270,6 @@ export default function UnifiedDashboard() {
               ) : (
                 <button className="graduate-btn" onClick={() => handleGraduateCounselee(true)}>Graduate</button>
               )}
-              <button className="delete-btn-small" onClick={handleDeleteCounselee}>Delete</button>
             </div>
             {selectedCounselee.uid && (
               <>
@@ -2305,6 +2328,16 @@ export default function UnifiedDashboard() {
               <HeartJournalsTile journals={counseleeHeartJournals} role="counselor" onView={(j) => setViewingCounseleeHeartJournal(j)} />
               <ThinkListsTile thinkLists={counseleeThinkLists} role="counselor" onView={(tl) => setViewingCounseleeThinkList(tl)} onAdd={() => setViewingCounseleeThinkList({})} />
               <JournalingTile journals={counseleeJournals} role="counselor" onView={(j) => setViewingCounseleeJournal(j)} onAdd={() => setViewingCounseleeJournal({})} />
+              {selectedCounselee?.uid && (
+                <PrayerRequestsTile
+                  user={user}
+                  userProfile={userProfile}
+                  role="counselor"
+                  targetUid={selectedCounselee.uid}
+                  targetName={selectedCounselee.name}
+                  getAuthToken={() => auth.currentUser.getIdToken()}
+                />
+              )}
             </div>
           </div>
           {renderMessageModal()}
@@ -2551,6 +2584,16 @@ export default function UnifiedDashboard() {
                 role="accountability"
                 onView={(j) => setViewingWatchedJournal(j)}
               />
+              {selectedWatchedUser?.uid && (
+                <PrayerRequestsTile
+                  user={user}
+                  userProfile={userProfile}
+                  role="accountability"
+                  targetUid={selectedWatchedUser.uid}
+                  targetName={selectedWatchedUser.name}
+                  getAuthToken={() => auth.currentUser.getIdToken()}
+                />
+              )}
             </div>
           </div>
           {renderMessageModal()}
@@ -2575,6 +2618,11 @@ export default function UnifiedDashboard() {
       <header>
         <h1>Dashboard</h1>
         <div className="header-actions">
+          <a className="help-btn" href="/help" title="Help">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
+            </svg>
+          </a>
           <button className="account-btn" onClick={() => setShowSettings(true)} title="Account Settings">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
@@ -2625,6 +2673,48 @@ export default function UnifiedDashboard() {
                 const total = (myCounts.cheers || 0) + (myCounts.nudges || 0) + (myCounts.messages || 0);
                 return total > 0 ? renderEncouragementCounters(user.uid) : null;
               })()}
+              {myPrayerCount > 0 && (
+                <span
+                  className="encouragement-counter prayer-counter"
+                  onClick={() => {
+                    // Load recent prayers for pop-out
+                    const loadPrayers = async () => {
+                      try {
+                        const myPRsSnap = await getDocs(query(
+                          collection(db, `users/${user.uid}/prayerRequests`),
+                          where('expiresAt', '>', Timestamp.now())
+                        ));
+                        const allPrayers = [];
+                        for (const prDoc of myPRsSnap.docs) {
+                          const prData = prDoc.data();
+                          const prayersSnap = await getDocs(query(
+                            collection(db, `users/${user.uid}/prayerRequests/${prDoc.id}/prayers`),
+                            orderBy('prayedAt', 'desc'),
+                            limit(50)
+                          ));
+                          prayersSnap.docs.forEach(pDoc => {
+                            const pData = pDoc.data();
+                            allPrayers.push({
+                              name: pData.prayerName,
+                              date: pData.prayedAt,
+                              prText: prData.text?.substring(0, 40) || ''
+                            });
+                          });
+                        }
+                        allPrayers.sort((a, b) => (b.date?.toDate?.()?.getTime() || 0) - (a.date?.toDate?.()?.getTime() || 0));
+                        setPrayerDetailList(allPrayers.slice(0, 50));
+                        setShowPrayerDetail(true);
+                      } catch (err) {
+                        console.error('Failed to load prayer details:', err);
+                      }
+                    };
+                    loadPrayers();
+                  }}
+                  title="People praying for you"
+                >
+                  🙏 {myPrayerCount}
+                </span>
+              )}
               <div className="greeting-row-right">
                 {myCounselorProfile && (
                   <div className="b-person-tile counselor-tile">
@@ -2827,8 +2917,48 @@ export default function UnifiedDashboard() {
                   onView={(j) => setViewingMyJournal(j)}
                   onAdd={() => setViewingMyJournal({})}
                 />
+
+                <PrayerRequestsTile
+                  user={user}
+                  userProfile={userProfile}
+                  role="counselee"
+                  isCounselor={isCounselor}
+                  watchingUsers={myWatchingUsers}
+                  counseleeUids={isCounselor ? counselees.filter(c => c.uid && !c.graduated).map(c => ({ uid: c.uid, name: c.name })) : []}
+                  onPrayerCountUpdate={setMyPrayerCount}
+                  getAuthToken={() => auth.currentUser.getIdToken()}
+                  onAdd={() => setViewingMyPrayerRequest({})}
+                  onEdit={(pr) => setViewingMyPrayerRequest(pr)}
+                />
               </div>
             </div>
+
+            {/* Prayer detail modal */}
+            {showPrayerDetail && (
+              <div className="modal-overlay" onClick={() => setShowPrayerDetail(false)}>
+                <div className="modal-content" onClick={e => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h3>People Praying for You</h3>
+                    <button className="modal-close" onClick={() => setShowPrayerDetail(false)}>&times;</button>
+                  </div>
+                  <div className="modal-body">
+                    {prayerDetailList.length === 0 ? (
+                      <p className="empty-list">No prayers recorded yet.</p>
+                    ) : (
+                      <ul className="pr-detail-list">
+                        {prayerDetailList.map((p, i) => (
+                          <li key={i} className="pr-detail-item">
+                            <span className="pr-detail-name">{p.name}</span>
+                            <span className="pr-detail-text">{p.prText}{p.prText.length >= 40 ? '...' : ''}</span>
+                            <span className="pr-detail-date">{p.date?.toDate ? p.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
 

@@ -74,6 +74,7 @@ export function getViewState({
   viewingHeartJournal,
   viewingThinkList,
   viewingJournal,
+  viewingPrayerRequest,
   selectedCounselee
 }) {
   if (showHeartJournal || viewingHeartJournal) {
@@ -87,6 +88,9 @@ export function getViewState({
   }
   if (showJournalingPage || viewingJournal) {
     return { view: 'journaling' };
+  }
+  if (viewingPrayerRequest) {
+    return { view: 'prayerRequest' };
   }
   if (selectedSession) {
     return { view: 'session', id: selectedSession.id };
