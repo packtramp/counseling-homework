@@ -37,6 +37,10 @@ const db = admin.apps.length ? admin.firestore() : null;
  * - Logs red days to activityLog for historical tracking
  */
 export default async function handler(req, res) {
+  if (!db) {
+    return res.status(500).json({ error: 'Firebase not initialized' });
+  }
+
   // Verify this is a cron request from Vercel
   const authHeader = req.headers['authorization'];
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -44,13 +48,118 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (!db) {
-    return res.status(500).json({ error: 'Firebase not initialized' });
-  }
-
   console.log('Midnight cron running at:', new Date().toISOString());
 
   try {
+    // ═══ PHASE 1: VACATION AUTO-COMPLETE (runs before streak/behind calculations) ═══
+    // Auto-completes for YESTERDAY (the day that just ended) so completions count toward
+    // the correct homework week. Also completes for today to stay current.
+    const now = new Date();
+    const chicagoNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+
+    // Yesterday in Chicago time
+    const yesterdayChicago = new Date(chicagoNow);
+    yesterdayChicago.setDate(yesterdayChicago.getDate() - 1);
+    const yMonth = String(yesterdayChicago.getMonth() + 1).padStart(2, '0');
+    const yDay = String(yesterdayChicago.getDate()).padStart(2, '0');
+    const yYear = yesterdayChicago.getFullYear();
+    const yesterdayDateStr = `${yYear}-${yMonth}-${yDay}`;
+    const yesterdayMidnight = new Date(yesterdayChicago);
+    yesterdayMidnight.setHours(0, 0, 0, 0);
+    // Timestamp for yesterday at 11:59 PM Chicago time
+    const yesterdayLate = new Date(yesterdayChicago);
+    yesterdayLate.setHours(23, 59, 0, 0);
+    // Convert back to UTC for Firestore timestamp
+    const yesterdayLateUtcMs = now.getTime() - (chicagoNow.getTime() - yesterdayLate.getTime());
+    const yesterdayTimestamp = admin.firestore.Timestamp.fromMillis(yesterdayLateUtcMs);
+
+    // Today in Chicago time
+    const chicagoDateStr = now.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
+    const [vMonth, vDay, vYear] = chicagoDateStr.split('/');
+    const todayDateStr = `${vYear}-${vMonth.padStart(2, '0')}-${vDay.padStart(2, '0')}`;
+    const todayMidnight = new Date(chicagoNow);
+    todayMidnight.setHours(0, 0, 0, 0);
+
+    let vacationUsersProcessed = 0;
+    let vacationItemsAutoCompleted = 0;
+
+    const allUsersSnap = await db.collection('users').get();
+    for (const userDoc of allUsersSnap.docs) {
+      const userData = userDoc.data();
+      if (!userData.vacationStart || !userData.vacationEnd) continue;
+
+      const vacStart = userData.vacationStart.toDate ? userData.vacationStart.toDate() : new Date(userData.vacationStart);
+      const vacEnd = userData.vacationEnd.toDate ? userData.vacationEnd.toDate() : new Date(userData.vacationEnd);
+      if (now < vacStart || now > vacEnd) continue;
+
+      const counselorId = userData.counselorId || userDoc.id;
+      const counseleeDocId = userData.counseleeDocId || userDoc.id;
+      const homeworkPath = `counselors/${counselorId}/counselees/${counseleeDocId}/homework`;
+      const homeworkSnap = await db.collection(homeworkPath).get();
+      const autoCompletedTitles = [];
+
+      for (const hwDoc of homeworkSnap.docs) {
+        const hw = hwDoc.data();
+        if (hw.status === 'cancelled') continue;
+
+        const completions = hw.completions || [];
+
+        // Check if already completed yesterday
+        let yesterdayDone = false;
+        for (const c of completions) {
+          const cDate = c.toDate ? c.toDate() : new Date(c);
+          const cChicago = new Date(cDate.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+          cChicago.setHours(0, 0, 0, 0);
+          if (cChicago.getTime() === yesterdayMidnight.getTime()) { yesterdayDone = true; break; }
+        }
+
+        // Check if already completed today
+        let todayDone = false;
+        for (const c of completions) {
+          const cDate = c.toDate ? c.toDate() : new Date(c);
+          const cChicago = new Date(cDate.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+          cChicago.setHours(0, 0, 0, 0);
+          if (cChicago.getTime() === todayMidnight.getTime()) { todayDone = true; break; }
+        }
+
+        const updates = {};
+        const dateStrs = [];
+
+        // Backfill yesterday if vacation was active then too
+        if (!yesterdayDone && yesterdayMidnight.getTime() >= new Date(vacStart.toLocaleString('en-US', { timeZone: 'America/Chicago' })).setHours(0,0,0,0)) {
+          updates.completions = admin.firestore.FieldValue.arrayUnion(yesterdayTimestamp);
+          dateStrs.push(yesterdayDateStr);
+        }
+
+        // Complete today
+        if (!todayDone) {
+          updates.completions = admin.firestore.FieldValue.arrayUnion(
+            ...(dateStrs.length > 0 ? [yesterdayTimestamp, admin.firestore.Timestamp.now()] : [admin.firestore.Timestamp.now()])
+          );
+          dateStrs.push(todayDateStr);
+        }
+
+        if (dateStrs.length > 0) {
+          updates.autoCompletedDates = admin.firestore.FieldValue.arrayUnion(...dateStrs);
+          await db.doc(`${homeworkPath}/${hwDoc.id}`).update(updates);
+          autoCompletedTitles.push(hw.title || hwDoc.id);
+          vacationItemsAutoCompleted += dateStrs.length;
+        }
+      }
+
+      if (autoCompletedTitles.length > 0) {
+        await db.collection(`counselors/${counselorId}/counselees/${counseleeDocId}/activityLog`).add({
+          type: 'vacation_auto_complete',
+          itemsAutoCompleted: autoCompletedTitles,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        vacationUsersProcessed++;
+      }
+    }
+
+    console.log(`Vacation auto-complete: ${vacationUsersProcessed} users, ${vacationItemsAutoCompleted} items`);
+
+    // ═══ PHASE 2: BEHIND COUNT + STREAK UPDATES ═══
     // Get all counselors
     const counselorsSnap = await db.collection('counselors').get();
     let counseleesProcessed = 0;
@@ -66,6 +175,26 @@ export default async function handler(req, res) {
       for (const counseleeDoc of counseleesSnap.docs) {
         counseleesProcessed++;
         const counseleeId = counseleeDoc.id;
+
+        // Skip counselees on vacation
+        try {
+          const usersSnap = await db.collection('users')
+            .where('counselorId', '==', counselorId)
+            .where('counseleeDocId', '==', counseleeId)
+            .limit(1)
+            .get();
+          if (!usersSnap.empty) {
+            const userData = usersSnap.docs[0].data();
+            if (userData.vacationStart && userData.vacationEnd) {
+              const now = new Date();
+              const vacStart = userData.vacationStart.toDate ? userData.vacationStart.toDate() : new Date(userData.vacationStart);
+              const vacEnd = userData.vacationEnd.toDate ? userData.vacationEnd.toDate() : new Date(userData.vacationEnd);
+              if (now >= vacStart && now <= vacEnd) {
+                continue;
+              }
+            }
+          }
+        } catch (e) { /* vacation check failed, proceed normally */ }
 
         // Get homework for this counselee
         const homeworkSnap = await db.collection(`counselors/${counselorId}/counselees/${counseleeId}/homework`).get();
