@@ -340,23 +340,12 @@ function generatePDF({ userName, homework, heartJournals, thinkLists, journals, 
       labelValue('Status', jn.status || 'active');
       labelValue('Created', fmtDate(jn.createdAt));
 
-      // Entries
-      const entries = jn.entries || [];
-      if (entries.length > 0) {
+      // Content (entries stored as rich HTML with <hr> separators)
+      if (jn.content) {
         checkPage(10);
-        label(`Entries (${entries.length}):`);
+        label('Entries:');
         y += LINE_H;
-        entries.forEach(entry => {
-          checkPage(15);
-          pdf.setFont('helvetica', 'bold');
-          pdf.setFontSize(8);
-          pdf.text(fmtDateTime(entry.date), MARGIN + 4, y);
-          y += LINE_H;
-          pdf.setFont('helvetica', 'normal');
-          pdf.setFontSize(9);
-          wrappedBlock(entry.content);
-          y += 2;
-        });
+        wrappedBlock(jn.content);
       } else {
         labelValue('Entries', 'None yet');
       }
