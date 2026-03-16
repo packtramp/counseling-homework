@@ -41,7 +41,18 @@ export default function PrayerRequestsTile({
   const [myPrayerRequests, setMyPrayerRequests] = useState([]);
   const [apPrayerRequests, setApPrayerRequests] = useState([]); // PRs from people I watch (AP)
   const [counseleePrayerRequests, setCounseleePrayerRequests] = useState([]); // PRs from my counselees
-  const [prayedRecently, setPrayedRecently] = useState({}); // { [prId]: true } for visual feedback
+  const [prayedRecently, setPrayedRecently] = useState(() => {
+    // Restore cooldowns from localStorage (1-hour per PR)
+    try {
+      const stored = JSON.parse(localStorage.getItem('prayedCooldowns') || '{}');
+      const now = Date.now();
+      const active = {};
+      for (const [prId, ts] of Object.entries(stored)) {
+        if (now - ts < 3600000) active[prId] = true;
+      }
+      return active;
+    } catch { return {}; }
+  });
 
   const now = new Date();
 
@@ -196,9 +207,13 @@ export default function PrayerRequestsTile({
         prayerCount: increment(1)
       });
 
-      // Visual feedback
+      // Visual feedback + 1-hour cooldown via localStorage
       setPrayedRecently(prev => ({ ...prev, [pr.id]: true }));
-      setTimeout(() => setPrayedRecently(prev => ({ ...prev, [pr.id]: false })), 3000);
+      try {
+        const stored = JSON.parse(localStorage.getItem('prayedCooldowns') || '{}');
+        stored[pr.id] = Date.now();
+        localStorage.setItem('prayedCooldowns', JSON.stringify(stored));
+      } catch { /* localStorage unavailable */ }
 
       // Send email (max 1/day handled server-side)
       try {
@@ -230,7 +245,7 @@ export default function PrayerRequestsTile({
       <div className="pr-item-content">
         {showOwner && <span className="pr-owner">{pr.ownerName || 'Unknown'}</span>}
         {showOwner && <span className="pr-separator"> - </span>}
-        <span className="pr-text">{pr.text?.substring(0, 80)}{pr.text?.length > 80 ? '...' : ''}</span>
+        <span className="pr-text">{pr.text?.substring(0, 120)}{pr.text?.length > 120 ? '...' : ''}</span>
       </div>
       <div className="pr-item-actions">
         {showActions === 'pray' && (

@@ -548,7 +548,7 @@ export default function JournalingPage({
         </button>
         {!isReadOnly && (
           <>
-            <button type="button" className="jn-footer-btn jn-submit-btn" onClick={handleSubmit}>
+            <button type="button" className="jn-footer-btn jn-submit-btn" onClick={handleSubmit} disabled={!title.trim() || !content.trim()}>
               {currentJournalId ? 'Update' : 'Submit'}
             </button>
             {currentJournalId && (

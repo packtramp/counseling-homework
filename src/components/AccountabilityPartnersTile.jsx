@@ -6,12 +6,10 @@ export default function AccountabilityPartnersTile({
   watchingMe = [],
   onClick
 }) {
-  const totalConnections = myPartners.length + watchingMe.length;
-
   return (
     <div className="accountability-partners-tile" onClick={onClick}>
       <span className="ap-tile-title">Accountability Partners</span>
-      <span className="ap-tile-count">{totalConnections}</span>
+      <span className="ap-tile-count">{myPartners.length}</span>
     </div>
   );
 }

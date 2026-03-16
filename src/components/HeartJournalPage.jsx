@@ -52,7 +52,7 @@ export default function HeartJournalPage({ userProfile, onClose, onSaved, editin
   // - Counselee on submitted: read-only (can toggle to edit)
   const getInitialReadOnly = () => {
     if (forceReadOnly || isCounselor || isAccountability) return true;
-    if (!editingJournal) return false; // New journal = edit mode
+    if (!editingJournal || !editingJournal.id) return false; // New journal = edit mode
     if (editingJournal.status === 'draft') return false;
     return true; // Submitted = start in read-only
   };

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useAppNavigation, getViewState } from '../hooks/useAppNavigation';
 import { db, auth } from '../config/firebase';
-import { collection, query, onSnapshot, addDoc, setDoc, doc, deleteDoc, updateDoc, serverTimestamp, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, setDoc, doc, deleteDoc, updateDoc, serverTimestamp, orderBy, getDocs, arrayUnion, Timestamp } from 'firebase/firestore';
 import Tile from '../components/Tile';
 import RichTextEditor from '../components/RichTextEditor';
 import HomeworkTile from '../components/HomeworkTile';
@@ -49,6 +49,7 @@ export default function CounselorDashboard() {
   const [showFamilyLinkModal, setShowFamilyLinkModal] = useState(false);
   const [viewingHeartJournal, setViewingHeartJournal] = useState(null); // Heart journal being viewed
   const [viewingThinkList, setViewingThinkList] = useState(null); // Think list being viewed/edited
+  const [completingId, setCompletingId] = useState(null);
   const [activityLog, setActivityLog] = useState([]);
   const [showActivityHistory, setShowActivityHistory] = useState(false);
   const [journals, setJournals] = useState([]);
@@ -362,7 +363,10 @@ export default function CounselorDashboard() {
           counselorId: user.uid,
           counseleeDocId: counseleeRef.id,
           createdAt: serverTimestamp(),
-          onboardingStep: 0
+          onboardingStep: 0,
+          emailReminders: true,
+          smsReminders: false,
+          reminderSchedule: defaultSchedule
         });
       }
 
@@ -509,6 +513,29 @@ export default function CounselorDashboard() {
   };
 
   // Uncheck (undo last completion) for homework in Done tab
+  const handleCompleteHomework = async (homeworkItem) => {
+    if (completingId) return;
+    setCompletingId(homeworkItem.id);
+
+    try {
+      const basePath = `counselors/${user.uid}/counselees/${selectedCounselee.id}`;
+      const homeworkRef = doc(db, `${basePath}/homework`, homeworkItem.id);
+
+      await updateDoc(homeworkRef, {
+        completions: arrayUnion(Timestamp.now())
+      });
+
+      await addDoc(collection(db, `${basePath}/activityLog`), {
+        action: 'homework_completed',
+        actor: 'counselor',
+        details: `Completed "${homeworkItem.title}" (marked by counselor)`,
+        timestamp: serverTimestamp()
+      });
+    } finally {
+      setCompletingId(null);
+    }
+  };
+
   const handleUncheckHomework = async (homeworkItem) => {
     if (!homeworkItem.completions || homeworkItem.completions.length === 0) return;
 
@@ -770,6 +797,8 @@ export default function CounselorDashboard() {
                 onUncheck={handleUncheckHomework}
                 onDelete={handleDeleteHomework}
                 onAdd={handleAddHomework}
+                onComplete={handleCompleteHomework}
+                completingId={completingId}
               />
             </div>
 
@@ -933,6 +962,8 @@ export default function CounselorDashboard() {
                 onUncheck={handleUncheckHomework}
                 onDelete={handleDeleteHomework}
                 onAdd={handleAddHomework}
+                onComplete={handleCompleteHomework}
+                completingId={completingId}
               />
 
               <Tile

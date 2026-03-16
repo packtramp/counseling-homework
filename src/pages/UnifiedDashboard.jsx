@@ -2589,38 +2589,45 @@ export default function UnifiedDashboard() {
                 {counselees.length === 0 ? (
                   <p className="empty-state">No counselees yet. Click "Add Counselee" to get started.</p>
                 ) : (
-                  <ul className="counselee-list">
+                  <div className="accountability-tiles-row">
                     {counselees
                       .filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated)
                       .map(counselee => {
                         const behindCount = counseleeBehindStatus[counselee.id] || 0;
+                        const status = !counselee.uid ? 'no-login' : counselee.graduated ? 'graduated' : behindCount > 0 ? 'behind' : 'on-track';
+                        const streak = counselee.currentStreak || 0;
                         return (
-                          <li key={counselee.id} className={`counselee-card clickable ${behindCount > 0 ? 'behind' : ''} ${counselee.graduated ? 'graduated' : ''}`} onClick={() => setSelectedCounselee(counselee)}>
-                            <div className="counselee-card-top">
+                          <div
+                            key={counselee.id}
+                            className={`accountability-tile status-${status}`}
+                            onClick={() => setSelectedCounselee(counselee)}
+                          >
+                            <div className="accountability-tile-top">
                               <ProfilePhoto photoUrl={counselee.photoUrl || counselee.counseleePhotoUrl} size="small" />
-                              <span className="status-dot" style={{ backgroundColor: getStatusColor(counselee) }}></span>
-                              <div className="counselee-info">
-                                <strong>{counselee.name}</strong>
-                                <span>{counselee.email || 'No email'}</span>
+                              <div className="accountability-tile-info">
+                                <div className="accountability-tile-name">{counselee.name}</div>
+                                <div className="accountability-tile-email">{counselee.email || 'No email'}</div>
+                                <div className="accountability-tile-meta">
+                                  <span className="accountability-tile-status">
+                                    {!counselee.uid ? 'No login' : counselee.graduated ? 'Graduated' : behindCount > 0 ? `${behindCount} behind` : streak > 0 ? 'On track' : 'No activity today'}
+                                  </span>
+                                </div>
                               </div>
-                              {!counselee.uid ? (
-                                <span className="no-login-badge">No login</span>
-                              ) : counselee.graduated ? (
-                                <span className="graduated-badge">Graduated</span>
-                              ) : behindCount > 0 ? (
-                                <span className="behind-badge">{behindCount} behind</span>
-                              ) : (
-                                <span className="streak">{counselee.currentStreak} day streak</span>
-                              )}
+                              <div className="streak-circle-container">
+                                <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
+                                  {streak}
+                                </div>
+                                <div className="streak-label">day streak</div>
+                              </div>
                             </div>
                             {counselee.uid && renderEncourageBar(counselee.uid)}
-                          </li>
+                          </div>
                         );
                       })}
                     {counselees.filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated).length === 0 && (
                       <p className="empty-state">{counseleeTab === 'active' ? 'No active counselees.' : 'No graduated counselees.'}</p>
                     )}
-                  </ul>
+                  </div>
                 )}
               </div>
             )}

@@ -50,19 +50,31 @@ export default function SmsOptIn() {
       <h2>What Messages Are Sent</h2>
       <p>If a user has opted in to SMS and has incomplete homework for the day, they receive up to 3 automated reminders at their chosen times. Examples:</p>
       <div style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: 12, margin: '8px 0', fontSize: '0.9rem' }}>
+        <em>"Counseling Homework: You're now subscribed to SMS reminders. Expect 1-3 msgs/day on days with incomplete assignments. Msg & data rates may apply. Reply HELP for help, STOP to opt out."</em>
+      </div>
+      <p style={{ fontSize: '0.75rem', color: '#718096', fontStyle: 'italic', marginTop: 0 }}>
+        (Confirmation message sent immediately upon opting in)
+      </p>
+      <div style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: 12, margin: '8px 0', fontSize: '0.9rem' }}>
         <em>"Counseling Homework Reminder: You have 2 items to complete today. Visit https://counselinghomework.com to check them off. Reply STOP to unsubscribe or HELP for support."</em>
       </div>
       <div style={{ background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: 12, margin: '8px 0', fontSize: '0.9rem' }}>
         <em>"Counseling Homework: Don't forget — your Bible reading assignment is due this week (3 of 5 completed). Log in at https://counselinghomework.com. Reply STOP to opt out."</em>
       </div>
 
+      <h2>Message Frequency</h2>
+      <p>1–3 messages per day, only on days with incomplete homework assignments. Message and data rates may apply.</p>
+
       <h2>How to Opt Out</h2>
       <ul>
-        <li><strong>Reply STOP</strong> to any SMS message</li>
+        <li><strong>Reply STOP</strong> to any SMS message to unsubscribe immediately</li>
         <li><strong>Uncheck "SMS reminders"</strong> in Account Settings &gt; Reminders tab</li>
         <li><strong>Reply HELP</strong> for support information</li>
       </ul>
-      <p>Message and data rates may apply. Message frequency: 1-3 messages per day, only on days with incomplete homework.</p>
+      <p>You can opt out at any time using either method above. Opt-out takes effect immediately.</p>
+
+      <h2>Privacy</h2>
+      <p>Mobile phone numbers and mobile information collected for SMS reminders will <strong><u>not be shared with or sold to third parties</u></strong> for marketing or promotional purposes. Your information is used solely to send homework reminders from Counseling Homework.</p>
 
       <h2>Related Policies</h2>
       <ul>
@@ -72,8 +84,11 @@ export default function SmsOptIn() {
 
       <h2>Contact</h2>
       <p>
-        Questions? Contact us at{' '}
+        Questions about SMS reminders? Contact us at{' '}
         <a href="mailto:robdorsett@gmail.com" style={{ color: '#3182ce' }}>robdorsett@gmail.com</a>.
+      </p>
+      <p style={{ fontSize: '0.8rem', color: '#718096', marginTop: 24 }}>
+        Program: Counseling Homework SMS Reminders &bull; counselinghomework.com
       </p>
     </div>
   );

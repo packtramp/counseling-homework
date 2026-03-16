@@ -714,7 +714,7 @@ export default function ThinkListPage({
                 Save Draft
               </button>
             ) : null}
-            <button type="button" className="tl-footer-btn tl-submit-btn" onClick={handleSubmit}>
+            <button type="button" className="tl-footer-btn tl-submit-btn" onClick={handleSubmit} disabled={!title.trim() || !verse.trim() || !thinkListContent.trim() || !attitudePutOff.trim() || !attitudePutOn.trim() || !thoughtsPutOff.trim() || !thoughtsPutOn.trim() || !actionsPutOff.trim() || !actionsPutOn.trim()}>
               {editingThinkList?.status === 'active' ? 'Update' : 'Submit'}
             </button>
             {editingThinkList && currentThinkListId && (

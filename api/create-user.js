@@ -94,6 +94,10 @@ export default async function handler(req, res) {
 
     console.log('User created:', userRecord.uid);
 
+    // Auto-verify email for counselor-created accounts (they skip EmailVerifyGate)
+    await admin.auth().updateUser(userRecord.uid, { emailVerified: true });
+    console.log('Email auto-verified for counselor-created account:', userRecord.uid);
+
     // Send welcome email with login credentials
     let emailSent = false;
     if (process.env.RESEND_API_KEY) {

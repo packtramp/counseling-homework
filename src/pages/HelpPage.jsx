@@ -1,9 +1,10 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export default function HelpPage() {
+  const navigate = useNavigate();
   const handleBack = () => {
-    window.close();
-    setTimeout(() => { window.location.href = '/login'; }, 100);
+    navigate(-1);
   };
 
   const sectionStyle = { marginBottom: 32 };
@@ -197,6 +198,25 @@ export default function HelpPage() {
         </p>
         <p style={pStyle}>
           You can see your own received cheers, nudges, and messages on your dashboard greeting area. Only <strong>you</strong> see your own counts — other people can't see how many you've received.
+        </p>
+      </div>
+
+      {/* Prayer Requests */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>Prayer Requests</h2>
+        <p style={pStyle}>
+          Share prayer needs with your accountability partners and counselor. You'll find the <strong>Prayer Requests</strong> tile on the right side of your dashboard, below your journals.
+        </p>
+        <ul style={ulStyle}>
+          <li><strong>Adding a request:</strong> Click the 🙏+ button, type your prayer request (up to 500 characters), and set an end date (up to 1 month out). When you submit, all your APs and your counselor will receive an email.</li>
+          <li><strong>End date:</strong> Prayer requests automatically disappear after the end date. This keeps requests fresh and relevant. You can always add a new one.</li>
+          <li><strong>"Prayed" button:</strong> When someone sees your prayer request, they can click the 🙏 button to let you know they prayed for you. You'll receive an email (max 1 per person per day).</li>
+          <li><strong>Prayer counter:</strong> The 🙏 counter on your dashboard shows how many times others have prayed for your requests. Click it to see who prayed and when.</li>
+          <li><strong>Editing:</strong> You can edit your own prayer requests to update the text, change the end date, or add an outcome describing how God answered.</li>
+          <li><strong>Deleting:</strong> You can delete a prayer request at any time. This removes it from everyone's view.</li>
+        </ul>
+        <p style={pStyle}>
+          Your counselor's prayer requests are private and not visible to counselees. Prayer requests only flow upward to your support network.
         </p>
       </div>
 

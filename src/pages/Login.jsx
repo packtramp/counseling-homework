@@ -66,7 +66,7 @@ export default function Login() {
           lastLogin: serverTimestamp(),
           tosAcceptedAt: serverTimestamp(),
           emailReminders: true,
-          smsReminders: false,
+          smsReminders: true,
           reminderSchedule: defaultSchedule,
           onboardingStep: 0
         });
@@ -81,7 +81,7 @@ export default function Login() {
           createdAt: serverTimestamp(),
           isSelf: true,
           emailReminders: true,
-          smsReminders: false,
+          smsReminders: true,
           reminderSchedule: defaultSchedule
         });
 

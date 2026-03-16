@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { auth } from './config/firebase';
 import Login from './pages/Login';
@@ -8,6 +8,12 @@ import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import SmsOptIn from './pages/SmsOptIn';
 import HelpPage from './pages/HelpPage';
+import SettingsPage from './pages/SettingsPage';
+import HeartJournalRoute from './pages/HeartJournalRoute';
+import ThinkListRoute from './pages/ThinkListRoute';
+import JournalingRoute from './pages/JournalingRoute';
+import TopHeader from './components/TopHeader';
+import BottomNav from './components/BottomNav';
 import './App.css';
 
 function EmailVerifyGate() {
@@ -120,6 +126,25 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+function AuthenticatedLayout({ children }) {
+  const location = useLocation();
+  const contentRef = useRef(null);
+
+  useEffect(() => {
+    if (contentRef.current) contentRef.current.scrollTop = 0;
+  }, [location.pathname]);
+
+  return (
+    <div className="app-shell">
+      <TopHeader />
+      <div className="app-content" ref={contentRef}>
+        {children}
+      </div>
+      <BottomNav />
+    </div>
+  );
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -131,10 +156,52 @@ function App() {
           <Route path="/help" element={<HelpPage />} />
           <Route path="/sms-optin" element={<SmsOptIn />} />
           <Route
+            path="/heart-journal"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedLayout>
+                  <HeartJournalRoute />
+                </AuthenticatedLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/think-list"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedLayout>
+                  <ThinkListRoute />
+                </AuthenticatedLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/journaling"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedLayout>
+                  <JournalingRoute />
+                </AuthenticatedLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <AuthenticatedLayout>
+                  <SettingsPage />
+                </AuthenticatedLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/"
             element={
               <ProtectedRoute>
-                <UnifiedDashboard />
+                <AuthenticatedLayout>
+                  <UnifiedDashboard />
+                </AuthenticatedLayout>
               </ProtectedRoute>
             }
           />

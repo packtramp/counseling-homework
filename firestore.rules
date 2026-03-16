@@ -56,11 +56,11 @@ service cloud.firestore {
     match /users/{userId}/prayerRequests/{requestId} {
       // Owner can CRUD their own prayer requests
       allow read, write: if request.auth != null && request.auth.uid == userId;
-      // APs can read (via accountabilityPartnerUids on the PR owner's user doc)
-      allow read: if request.auth != null &&
+      // APs can read and update prayerCount (via accountabilityPartnerUids on the PR owner's user doc)
+      allow read, update: if request.auth != null &&
         request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.accountabilityPartnerUids;
-      // Counselor can read their counselee's prayer requests
-      allow read: if request.auth != null &&
+      // Counselor can read and update prayerCount on their counselee's prayer requests
+      allow read, update: if request.auth != null &&
         get(/databases/$(database)/documents/users/$(userId)).data.counselorId == request.auth.uid;
 
       // Prayers subcollection - records of who prayed

@@ -62,6 +62,73 @@ export default async function handler(req, res) {
 
   const { email, name, uid, action, code } = req.body;
 
+  // ---- FEEDBACK (no auth required beyond the Bearer token already verified above) ----
+  if (action === 'feedback') {
+    const { type, title, page, displayName } = req.body;
+    if (!type || !title) {
+      return res.status(400).json({ error: 'Missing required fields (type, title)' });
+    }
+
+    const isBug = type === 'Bug Report';
+    const label = isBug ? 'bug' : 'enhancement';
+
+    let body = `**Submitted by:** ${displayName || 'Unknown'} (${email || 'no email'})\n`;
+    body += `**Page/Screen:** ${page || 'Not specified'}\n\n`;
+
+    if (isBug) {
+      body += `## What's happening\n${req.body.whatHappened || 'Not provided'}\n\n`;
+      if (req.body.expected) body += `## Expected behavior\n${req.body.expected}\n\n`;
+      if (req.body.steps) body += `## Steps to reproduce\n${req.body.steps}\n\n`;
+    } else {
+      body += `## Description\n${req.body.description || 'Not provided'}\n\n`;
+      if (req.body.whyUseful) body += `## Why this would be useful\n${req.body.whyUseful}\n\n`;
+    }
+
+    if (req.body.screenshotUrl) {
+      body += `## Screenshot\n![Screenshot](${req.body.screenshotUrl})\n\n`;
+    }
+
+    body += `---\n*Submitted via Counseling Homework app feedback form*`;
+
+    try {
+      const ghToken = process.env.GITHUB_TOKEN;
+      if (ghToken) {
+        const ghRes = await fetch('https://api.github.com/repos/packtramp/counseling-homework/issues', {
+          method: 'POST',
+          headers: {
+            'Authorization': `token ${ghToken}`,
+            'Accept': 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: `[${isBug ? 'Bug' : 'Feature'}] ${title}`,
+            body,
+            labels: [label, 'user-feedback'],
+          }),
+        });
+        if (!ghRes.ok) console.error('GitHub Issue creation failed:', await ghRes.text());
+      }
+
+      if (process.env.RESEND_API_KEY) {
+        try {
+          await resend.emails.send({
+            from: 'GCC Counseling <noreply@counselinghomework.com>',
+            to: 'robdorsett@gmail.com',
+            subject: `[Counseling HW ${type}] ${title}`,
+            html: body.replace(/\n/g, '<br/>').replace(/## /g, '<h3>').replace(/<h3>(.*?)<br\/>/g, '<h3>$1</h3>'),
+          });
+        } catch (emailErr) {
+          console.error('Feedback email notification failed (non-fatal):', emailErr);
+        }
+      }
+
+      return res.status(200).json({ ok: true });
+    } catch (err) {
+      console.error('Feedback submission failed:', err);
+      return res.status(500).json({ error: 'Failed to submit feedback' });
+    }
+  }
+
   // Check verification code (called from EmailVerifyGate)
   if (action === 'check-verify-code') {
     if (!code) return res.status(400).json({ error: 'Missing code' });

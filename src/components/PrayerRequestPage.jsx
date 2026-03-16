@@ -101,57 +101,58 @@ export default function PrayerRequestPage({ user, userProfile, editingPR = null,
   return (
     <div className="pr-form-page">
       <div className="pr-form-header">
-        <button className="pr-back-btn" onClick={onClose}>← Back</button>
         <h2>{editingPR?.id ? 'Edit Prayer Request' : 'New Prayer Request'}</h2>
       </div>
-      <div className="pr-form-body">
-        <label className="pr-form-label">Prayer Request</label>
-        <textarea
-          className="pr-form-textarea"
-          value={formText}
-          onChange={(e) => setFormText(e.target.value.substring(0, 500))}
-          placeholder="What would you like prayer for?"
-          rows={5}
-          maxLength={500}
-        />
-        <span className="pr-char-count">{formText.length}/500</span>
+      <main className="pr-form-content">
+        <div className="pr-form-card">
+          <label className="pr-form-label">Prayer Request</label>
+          <textarea
+            className="pr-form-textarea"
+            value={formText}
+            onChange={(e) => setFormText(e.target.value.substring(0, 500))}
+            placeholder="What would you like prayer for?"
+            rows={5}
+            maxLength={500}
+          />
+          <span className="pr-char-count">{formText.length}/500</span>
 
-        <label className="pr-form-label">Please pray through</label>
-        <input
-          type="date"
-          className="pr-form-date"
-          value={formExpiry}
-          min={getMinExpiry()}
-          max={getMaxExpiry()}
-          onChange={(e) => setFormExpiry(e.target.value)}
-        />
-        <span className="pr-date-hint"><em>Prayer requests can be set up to 1 month out to keep things fresh. You can always edit and extend for another month.</em></span>
+          <label className="pr-form-label">Please pray through</label>
+          <input
+            type="date"
+            className="pr-form-date"
+            value={formExpiry}
+            min={getMinExpiry()}
+            max={getMaxExpiry()}
+            onChange={(e) => setFormExpiry(e.target.value)}
+          />
+          <span className="pr-date-hint"><em>Prayer requests can be set up to 1 month out to keep things fresh. You can always edit and extend for another month.</em></span>
 
-        {editingPR?.id && (
-          <>
-            <label className="pr-form-label">Outcome (optional)</label>
-            <textarea
-              className="pr-form-textarea pr-form-outcome"
-              value={formOutcome}
-              onChange={(e) => setFormOutcome(e.target.value.substring(0, 500))}
-              placeholder="What happened? How did God answer?"
-              rows={3}
-              maxLength={500}
-            />
-          </>
-        )}
-
-        <div className="pr-form-buttons">
-          <button className="pr-cancel-btn" onClick={onClose}>Cancel</button>
-          <button
-            className="pr-save-btn"
-            onClick={handleSave}
-            disabled={saving || !formText.trim() || !formExpiry}
-          >
-            {saving ? 'Saving...' : editingPR?.id ? 'Update' : 'Submit'}
-          </button>
+          {editingPR?.id && (
+            <>
+              <label className="pr-form-label">Outcome (optional)</label>
+              <textarea
+                className="pr-form-textarea pr-form-outcome"
+                value={formOutcome}
+                onChange={(e) => setFormOutcome(e.target.value.substring(0, 500))}
+                placeholder="What happened? How did God answer?"
+                rows={3}
+                maxLength={500}
+              />
+            </>
+          )}
         </div>
-      </div>
+      </main>
+      <footer className="hj-sticky-footer">
+        <button type="button" className="hj-footer-btn hj-back-btn" onClick={onClose}>Back</button>
+        <button
+          type="button"
+          className="hj-footer-btn hj-submit-btn"
+          onClick={handleSave}
+          disabled={saving || !formText.trim() || !formExpiry}
+        >
+          {saving ? 'Saving...' : editingPR?.id ? 'Update' : 'Submit'}
+        </button>
+      </footer>
     </div>
   );
 }

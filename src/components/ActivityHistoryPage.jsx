@@ -1,12 +1,18 @@
+import { useState } from 'react';
+import CalendarHeatmap from './CalendarHeatmap';
+
 /**
  * Activity History Page - Full-page view of all activity
  *
  * Props:
  * - activityLog: array of all activity entries
+ * - homework: array of homework items (for calendar heatmap)
  * - counseleeName: string - name to show in header
  * - onClose: () => void - called when Back button clicked
  */
-export default function ActivityHistoryPage({ activityLog = [], counseleeName = '', onClose }) {
+export default function ActivityHistoryPage({ activityLog = [], homework = [], counseleeName = '', onClose }) {
+  const [activeTab, setActiveTab] = useState('calendar');
+
   // Format timestamp for display - more detailed for full page
   const formatLogDate = (timestamp) => {
     if (!timestamp) return '';
@@ -24,20 +30,30 @@ export default function ActivityHistoryPage({ activityLog = [], counseleeName = 
     <div className="activity-history-page">
       <header className="ah-page-header">
         <h2>Activity History{counseleeName ? ` - ${counseleeName}` : ''}</h2>
+        <div className="ah-tabs">
+          <button className={`ah-tab ${activeTab === 'calendar' ? 'active' : ''}`} onClick={() => setActiveTab('calendar')}>Calendar</button>
+          <button className={`ah-tab ${activeTab === 'list' ? 'active' : ''}`} onClick={() => setActiveTab('list')}>List</button>
+        </div>
       </header>
 
       <main className="ah-page-content">
-        {activityLog.length === 0 ? (
-          <p className="empty-list">No activity recorded yet.</p>
+        {activeTab === 'calendar' ? (
+          <CalendarHeatmap homework={homework} activityLog={activityLog} />
         ) : (
-          <ul className="ah-full-list">
-            {activityLog.map(entry => (
-              <li key={entry.id} className="ah-entry">
-                {entry.details} <span className="ah-time">— {formatLogDate(entry.timestamp)}</span>
-                {entry.actorName && <span className="ah-actor"> by {entry.actorName}</span>}
-              </li>
-            ))}
-          </ul>
+          <>
+            {activityLog.length === 0 ? (
+              <p className="empty-list">No activity recorded yet.</p>
+            ) : (
+              <ul className="ah-full-list">
+                {activityLog.map(entry => (
+                  <li key={entry.id} className="ah-entry">
+                    {entry.details} <span className="ah-time">— {formatLogDate(entry.timestamp)}</span>
+                    {entry.actorName && <span className="ah-actor"> by {entry.actorName}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </main>
 

@@ -298,7 +298,6 @@ export default async function handler(req, res) {
                 <blockquote style="border-left: 3px solid #805ad5; padding: 12px 16px; margin: 12px 0; background: #faf5ff; color: #2d3748; font-style: italic; border-radius: 4px;">
                   ${escapedPrayerText}
                 </blockquote>
-                <p style="color: #4a5568;">You're being lifted up in prayer. Keep pressing on!</p>
                 <div style="margin: 2rem 0; text-align: center;">
                   <a href="https://counselinghomework.com" style="background: #805ad5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; font-size: 1.1rem;">Open App</a>
                 </div>

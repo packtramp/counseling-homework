@@ -179,7 +179,7 @@ export default async function handler(req, res) {
       const periodEnd = new Date(periodStart.getTime() + msPerWeek);
 
       const periodEndChicago = toChicagoDate(periodEnd);
-      const daysLeftAfterToday = Math.max(0, Math.floor((periodEndChicago - todayChicago) / msPerDay));
+      const daysLeftIncludingToday = Math.max(1, Math.floor((periodEndChicago - todayChicago) / msPerDay));
 
       const dailyCounts = {};
       let completionsInPeriod = 0;
@@ -206,7 +206,7 @@ export default async function handler(req, res) {
       const effectiveTarget = isFirstWeek ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
       const tasksRemaining = effectiveTarget - weeklyCompleted;
       const maxPerDay = dailyCap < 999 ? dailyCap : 1;
-      const maxCanComplete = daysLeftAfterToday * maxPerDay;
+      const maxCanComplete = daysLeftIncludingToday * maxPerDay;
       const isBehind = tasksRemaining > maxCanComplete;
 
       hwDebug.push({
@@ -223,7 +223,7 @@ export default async function handler(req, res) {
         isBehind,
         isFirstWeek,
         weeksSinceAssigned,
-        daysLeftAfterToday,
+        daysLeftIncludingToday,
         maxPerDay,
         maxCanComplete,
         totalCompletions: completions.length,
@@ -306,7 +306,7 @@ export default async function handler(req, res) {
         const periodStart = new Date(assignedDate.getTime() + weeksSinceAssigned * msPerWeek);
         const periodEnd = new Date(periodStart.getTime() + msPerWeek);
         const periodEndChicago = toChicagoDate(periodEnd);
-        const daysLeftAfterToday = Math.max(0, Math.floor((periodEndChicago - todayChicago) / msPerDay));
+        const daysLeftIncludingToday = Math.max(1, Math.floor((periodEndChicago - todayChicago) / msPerDay));
 
         const dailyCounts = {};
         for (const c of completions) {
@@ -326,9 +326,9 @@ export default async function handler(req, res) {
         const effectiveTarget = isFirstWeek ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
         const tasksRemaining = effectiveTarget - weeklyCompleted;
         const maxPerDay = dailyCap < 999 ? dailyCap : 1;
-        const maxCanComplete = daysLeftAfterToday * maxPerDay;
+        const maxCanComplete = daysLeftIncludingToday * maxPerDay;
         const isBehind = tasksRemaining > maxCanComplete;
-        const isCritical = !isBehind && tasksRemaining > 0 && tasksRemaining > ((daysLeftAfterToday - 1) * maxPerDay);
+        const isCritical = !isBehind && tasksRemaining > 0 && tasksRemaining > ((daysLeftIncludingToday - 1) * maxPerDay);
 
         const rawDailyCap = hw.dailyCap;
         const todayKey = todayChicago.toDateString();
@@ -500,6 +500,17 @@ export default async function handler(req, res) {
       const userData = userDoc.data();
       const userId = userDoc.id;
 
+      // Skip users on vacation
+      if (userData.vacationStart && userData.vacationEnd) {
+        const now = new Date();
+        const vacStart = userData.vacationStart.toDate ? userData.vacationStart.toDate() : new Date(userData.vacationStart);
+        const vacEnd = userData.vacationEnd.toDate ? userData.vacationEnd.toDate() : new Date(userData.vacationEnd);
+        if (now >= vacStart && now <= vacEnd) {
+          diagnostics.push({ name: userData.name, email: userData.email, reason: 'on_vacation' });
+          continue;
+        }
+      }
+
       // Determine homework data path: user's counselorId/counseleeDocId or self-counselor
       const counselorId = userData.counselorId || userId;
       const counseleeDocId = userData.counseleeDocId || userId;
@@ -523,27 +534,35 @@ export default async function handler(req, res) {
       // Schedule from user doc (primary) or counselee doc (fallback)
       const schedule = userData.reminderSchedule || counselee.reminderSchedule;
 
-      // Check schedule for today - match by HOUR (not exact minute) for reliability
-      const getHour = (timeStr) => timeStr ? timeStr.split(':')[0] : null;
+      // Check schedule for today - match by HH:MM (cron fires every 30 min)
+      const snapTo30 = (timeStr) => {
+        if (!timeStr) return null;
+        const [h, m] = timeStr.split(':').map(Number);
+        const snappedM = m < 15 ? 0 : m < 45 ? 30 : 0;
+        const snappedH = m >= 45 ? (h + 1) % 24 : h;
+        return snappedH.toString().padStart(2, '0') + ':' + snappedM.toString().padStart(2, '0');
+      };
+      const currentHHMM = currentHour + ':' + now.toLocaleString('en-US', { minute: '2-digit', timeZone: 'America/Chicago' }).padStart(2, '0');
+      const currentSlot = snapTo30(currentHHMM);
       let matchedSlot = null;
       if (schedule && schedule[currentDay]) {
         const todaySchedule = schedule[currentDay];
         for (const slotNum of [1, 2, 3]) {
-          if (getHour(todaySchedule[`slot${slotNum}`]) === currentHour) {
+          if (snapTo30(todaySchedule[`slot${slotNum}`]) === currentSlot) {
             if (counselee[`lastSlot${slotNum}Sent`] !== todayStr) {
               matchedSlot = slotNum;
               break;
             }
           }
         }
-      } else if (getHour(counselee.reminderTime) === currentHour) {
+      } else if (snapTo30(counselee.reminderTime) === currentSlot) {
         if (counselee.lastSlot1Sent !== todayStr) {
           matchedSlot = 1;
         }
       }
 
       if (!matchedSlot) {
-        diagnostics.push({ name: userData.name, email, reason: 'no_slot_match', currentHour, slots: schedule?.[currentDay], dedup: { slot1: counselee.lastSlot1Sent, slot2: counselee.lastSlot2Sent, slot3: counselee.lastSlot3Sent } });
+        diagnostics.push({ name: userData.name, email, reason: 'no_slot_match', currentSlot, slots: schedule?.[currentDay], dedup: { slot1: counselee.lastSlot1Sent, slot2: counselee.lastSlot2Sent, slot3: counselee.lastSlot3Sent } });
         continue;
       }
 
@@ -585,9 +604,9 @@ export default async function handler(req, res) {
           const periodStart = new Date(assignedDate.getTime() + weeksSinceAssigned * msPerWeek);
           const periodEnd = new Date(periodStart.getTime() + msPerWeek);
 
-          // Calendar days remaining including today (Chicago time) for behind calc
+          // Calendar days remaining INCLUDING today (Chicago time) for behind calc
           const periodEndChicago = toChicagoDate(periodEnd);
-          const daysLeftAfterToday = Math.max(0, Math.floor((periodEndChicago - todayChicago) / msPerDay));
+          const daysLeftIncludingToday = Math.max(1, Math.floor((periodEndChicago - todayChicago) / msPerDay));
 
           // Count completions in this exact period (daily cap by Chicago day)
           const dailyCounts = {};
@@ -612,7 +631,7 @@ export default async function handler(req, res) {
           const effectiveTarget = isFirstWeek ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
           const tasksRemaining = effectiveTarget - weeklyCompleted;
           const maxPerDay = dailyCap < 999 ? dailyCap : 1;
-          const maxCanComplete = daysLeftAfterToday * maxPerDay;
+          const maxCanComplete = daysLeftIncludingToday * maxPerDay;
           const isBehind = tasksRemaining > maxCanComplete;
 
           // Check if this item is done for today (matches client isCompletedToday logic)
@@ -622,8 +641,8 @@ export default async function handler(req, res) {
           const isDoneForToday = rawDailyCap ? (todayCompletions >= rawDailyCap) : (todayCompletions > 0);
 
           // "Critical" = will become behind if they skip today
-          // If they don't do it today, remaining capacity = (daysLeftAfterToday - 1) * maxPerDay
-          const isCritical = !isBehind && tasksRemaining > 0 && tasksRemaining > ((daysLeftAfterToday - 1) * maxPerDay);
+          // If they don't do it today, remaining capacity = (daysLeftIncludingToday - 1) * maxPerDay
+          const isCritical = !isBehind && tasksRemaining > 0 && tasksRemaining > ((daysLeftIncludingToday - 1) * maxPerDay);
 
           activeItemCount++;
           if (isDoneForToday || weeklyCompleted >= effectiveTarget) {
@@ -647,7 +666,7 @@ export default async function handler(req, res) {
             tasksRemaining,
             assigned: toChicagoDate(assignedDate).toLocaleDateString('en-CA'),
             weeksSinceAssigned,
-            daysLeftAfterToday,
+            daysLeftIncludingToday,
             maxPerDay,
             periodStart: toChicagoDate(periodStart).toLocaleDateString('en-CA'),
             periodEnd: toChicagoDate(periodEnd).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }),
@@ -819,7 +838,7 @@ export default async function handler(req, res) {
             const periodEnd = new Date(periodStart.getTime() + smsMsPerWeek);
             const periodEndChicago = toChicagoDate(periodEnd);
             // Include today in remaining days (matches client-side isItemBehind)
-            const daysLeftAfterToday = Math.max(0, Math.floor((periodEndChicago - todayChicago) / smsMsPerDay));
+            const daysLeftIncludingToday = Math.max(1, Math.floor((periodEndChicago - todayChicago) / smsMsPerDay));
 
             const dailyCounts = {};
             let completedToday = false;
@@ -846,7 +865,7 @@ export default async function handler(req, res) {
             const effectiveTarget = isFirstWeek ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
             const tasksRemaining = effectiveTarget - weeklyCompleted;
             const maxPerDay = dailyCap < 999 ? dailyCap : 1;
-            const maxCanComplete = daysLeftAfterToday * maxPerDay;
+            const maxCanComplete = daysLeftIncludingToday * maxPerDay;
             const isBehind = tasksRemaining > maxCanComplete;
             const isWeeklyComplete = weeklyCompleted >= effectiveTarget;
 
@@ -932,10 +951,12 @@ export default async function handler(req, res) {
 
           // Get watched user's name
           let watchedName = 'Unknown';
+          let watchedUserData = null;
           try {
             const watchedUserDoc = await db.doc(`users/${watchedUid}`).get();
             if (watchedUserDoc.exists) {
-              watchedName = watchedUserDoc.data().name || 'Unknown';
+              watchedUserData = watchedUserDoc.data();
+              watchedName = watchedUserData.name || 'Unknown';
             }
           } catch (e) {
             // Fall back to Auth display name
@@ -944,6 +965,17 @@ export default async function handler(req, res) {
               watchedName = authUser.displayName || authUser.email || 'Unknown';
             } catch (e2) {
               // skip
+            }
+          }
+
+          // Skip watched users on vacation
+          if (watchedUserData && watchedUserData.vacationStart && watchedUserData.vacationEnd) {
+            const nowVac = new Date();
+            const vacStart = watchedUserData.vacationStart.toDate ? watchedUserData.vacationStart.toDate() : new Date(watchedUserData.vacationStart);
+            const vacEnd = watchedUserData.vacationEnd.toDate ? watchedUserData.vacationEnd.toDate() : new Date(watchedUserData.vacationEnd);
+            if (nowVac >= vacStart && nowVac <= vacEnd) {
+              diagnostics.push({ name: watchedName, reason: 'watched_user_on_vacation', ap: apData.name });
+              continue;
             }
           }
 
@@ -984,7 +1016,7 @@ export default async function handler(req, res) {
             const periodEnd = new Date(periodStart.getTime() + apMsPerWeek);
             const periodEndChicago = toChicagoDateAP(periodEnd);
             // Include today in remaining days (email fires at midnight, full day still ahead)
-            const daysLeftIncludingToday = Math.max(0, Math.floor((periodEndChicago - todayChicagoAP) / apMsPerDay));
+            const daysLeftIncludingToday = Math.max(1, Math.floor((periodEndChicago - todayChicagoAP) / apMsPerDay));
 
             // Count completions in this exact period (daily cap by Chicago day)
             const dailyCounts = {};
@@ -1139,7 +1171,7 @@ async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, beh
           // Think lists with dailyCap=2 and 6 remaining only need 3 working days, not 6 calendar days
           let urgency;
           const workingDaysNeeded = Math.ceil(hw.tasksRemaining / hw.maxPerDay);
-          const bufferDays = hw.daysLeftAfterToday - workingDaysNeeded;
+          const bufferDays = hw.daysLeftIncludingToday - workingDaysNeeded;
           if (hw.isBehind) {
             urgency = `<span style="color: #e53e3e; font-weight: 600;">Can't catch up this week</span>`;
           } else if (bufferDays === 0) {
@@ -1147,7 +1179,7 @@ async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, beh
           } else if (bufferDays <= 2) {
             urgency = `<span style="color: #c05621;">${bufferDays} day${bufferDays !== 1 ? 's' : ''} of buffer left</span>`;
           } else {
-            urgency = `<span style="color: #2c5282;">${hw.daysLeftAfterToday} days left</span>`;
+            urgency = `<span style="color: #2c5282;">${hw.daysLeftIncludingToday} days left</span>`;
           }
 
           detailHtml += `

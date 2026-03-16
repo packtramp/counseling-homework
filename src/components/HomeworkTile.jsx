@@ -140,32 +140,35 @@ export default function HomeworkTile({
     const completions = item.completions || [];
     const weeklyTarget = item.weeklyTarget || 7;
     const dailyCap = item.dailyCap || 999;
-    let assignedDate;
+    let rawAssigned;
     if (item.assignedDate?.toDate) {
-      assignedDate = item.assignedDate.toDate();
+      rawAssigned = item.assignedDate.toDate();
     } else if (item.assignedDate) {
-      assignedDate = new Date(item.assignedDate);
+      rawAssigned = new Date(item.assignedDate);
     } else {
       return null;
     }
+    // Normalize to midnight so week boundaries align with calendar days
+    const assignedDate = new Date(rawAssigned.getFullYear(), rawAssigned.getMonth(), rawAssigned.getDate());
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const msPerDay = 24 * 60 * 60 * 1000;
     const msPerWeek = 7 * msPerDay;
-    const totalWeeks = Math.floor((now - assignedDate) / msPerWeek);
+    const totalWeeks = Math.floor((today - assignedDate) / msPerWeek);
     if (totalWeeks === 0) return null; // Still in first week
 
     const weekResults = [];
     for (let w = 0; w < totalWeeks; w++) {
-      const weekStart = new Date(assignedDate.getTime() + w * msPerWeek);
-      const weekEnd = new Date(assignedDate.getTime() + (w + 1) * msPerWeek);
+      const weekStartMs = assignedDate.getTime() + w * msPerWeek;
+      const weekEndMs = assignedDate.getTime() + (w + 1) * msPerWeek;
       const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
       const effectiveTarget = w === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
       const dailyBuckets = {};
       for (const c of completions) {
         const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-        if (cDate >= weekStart && cDate < weekEnd) {
-          const dayKey = cDate.toDateString();
-          dailyBuckets[dayKey] = (dailyBuckets[dayKey] || 0) + 1;
+        const cMs = new Date(cDate.getFullYear(), cDate.getMonth(), cDate.getDate()).getTime();
+        if (cMs >= weekStartMs && cMs < weekEndMs) {
+          dailyBuckets[cMs] = (dailyBuckets[cMs] || 0) + 1;
         }
       }
       let weeklyCompleted = 0;
@@ -510,9 +513,13 @@ export default function HomeworkTile({
                           </svg>
                         </span>
                       ) : (
-                        <span className={`counselor-check-indicator ${doneToday ? 'checked' : ''}`}>
-                          {doneToday ? '✓' : ''}
-                        </span>
+                        <button
+                          className={`check-btn ${doneToday ? 'checked' : ''} ${isCompleting ? 'completing' : ''}`}
+                          onClick={(e) => { e.stopPropagation(); onComplete?.(item); }}
+                          disabled={doneToday || isCompleting}
+                        >
+                          {doneToday ? '✓' : isCompleting ? '...' : ''}
+                        </button>
                       )}
                       <a className="homework-status-title clickable" onClick={(e) => { if (isThinkList && onOpenThinkList) { e.stopPropagation(); onOpenThinkList(item); } else if (!isThinkList) startEdit(item); }}>
                         {item.title}

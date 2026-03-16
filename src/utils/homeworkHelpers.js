@@ -6,6 +6,47 @@
  */
 
 /**
+ * Normalize a date to midnight (strips time-of-day).
+ * Critical for week-boundary math — without this, homework assigned at 7pm
+ * creates week boundaries at 7pm, causing completions to leak across weeks.
+ */
+const toMidnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+/**
+ * Count calendar days between two midnight-normalized dates (DST-safe).
+ * Uses Math.round to handle DST offsets where ms difference is 23 or 25 hours
+ * instead of exactly 24. Both dates should be at local midnight.
+ */
+const daysBetween = (from, to) => Math.round((to - from) / (24 * 60 * 60 * 1000));
+
+/**
+ * Check if a user is currently on vacation.
+ * @param {Object} profile - User profile with optional vacationStart/vacationEnd
+ * @returns {boolean} True if currently on vacation
+ */
+export const isOnVacation = (profile) => {
+  if (!profile?.vacationStart || !profile?.vacationEnd) return false;
+  const now = new Date();
+  const start = profile.vacationStart.toDate ? profile.vacationStart.toDate() : new Date(profile.vacationStart);
+  const end = profile.vacationEnd.toDate ? profile.vacationEnd.toDate() : new Date(profile.vacationEnd);
+  return now >= start && now <= end;
+};
+
+/**
+ * Check if a specific date falls within a vacation period.
+ * @param {Date} date - The date to check
+ * @param {Object} profile - User profile with optional vacationStart/vacationEnd
+ * @returns {boolean} True if date is during vacation
+ */
+export const isDateOnVacation = (date, profile) => {
+  if (!profile?.vacationStart || !profile?.vacationEnd) return false;
+  const start = profile.vacationStart.toDate ? profile.vacationStart.toDate() : new Date(profile.vacationStart);
+  const end = profile.vacationEnd.toDate ? profile.vacationEnd.toDate() : new Date(profile.vacationEnd);
+  const checkDate = toMidnight(date);
+  return checkDate >= toMidnight(start) && checkDate <= toMidnight(end);
+};
+
+/**
  * Count completions for a specific day
  * @param {Array} completions - Array of completion timestamps (Firestore Timestamps or Dates)
  * @param {Date} date - Target date to count
@@ -57,26 +98,30 @@ export const getWeeklyProgress = (item, now = new Date()) => {
   const weeklyTarget = item.weeklyTarget || 7;
   const dailyCap = item.dailyCap || 999;
 
-  let assignedDate;
+  let rawAssigned;
   if (item.assignedDate?.toDate) {
-    assignedDate = item.assignedDate.toDate();
+    rawAssigned = item.assignedDate.toDate();
   } else if (item.assignedDate) {
-    assignedDate = new Date(item.assignedDate);
+    rawAssigned = new Date(item.assignedDate);
   } else {
-    assignedDate = now;
+    rawAssigned = now;
   }
+  const assignedDate = toMidnight(rawAssigned);
+  const today = toMidnight(now);
 
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const msPerWeek = 7 * msPerDay;
-  const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
+  // Use daysBetween for DST-safe week calculation
+  const totalDays = daysBetween(assignedDate, today);
+  const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
 
   // Group completions by day within this week
   const dailyCounts = {};
   completions.forEach(c => {
     const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-    const weekNum = Math.floor((cDate - assignedDate) / msPerWeek);
+    const cDay = toMidnight(cDate);
+    const cDays = daysBetween(assignedDate, cDay);
+    const weekNum = Math.floor(cDays / 7);
     if (weekNum === weeksSinceAssigned) {
-      const dayKey = cDate.toDateString();
+      const dayKey = cDay.toDateString();
       dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
     }
   });
@@ -100,33 +145,39 @@ export const getWeeklyProgress = (item, now = new Date()) => {
  * @param {Date} [now] - Optional current date (for testing)
  * @returns {boolean} True if behind
  */
-export const isItemBehind = (item, now = new Date()) => {
+export const isItemBehind = (item, now = new Date(), profile) => {
   if (item.status === 'cancelled') return false;
+  if (isOnVacation(profile)) return false;
 
   const completions = item.completions || [];
   const weeklyTarget = item.weeklyTarget || 7;
   const dailyCap = item.dailyCap || 999;
 
-  let assignedDate;
+  let rawAssigned;
   if (item.assignedDate?.toDate) {
-    assignedDate = item.assignedDate.toDate();
+    rawAssigned = item.assignedDate.toDate();
   } else if (item.assignedDate) {
-    assignedDate = new Date(item.assignedDate);
+    rawAssigned = new Date(item.assignedDate);
   } else {
-    assignedDate = now;
+    rawAssigned = now;
   }
+  const assignedDate = toMidnight(rawAssigned);
+  const today = toMidnight(now);
 
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const msPerWeek = 7 * msPerDay;
-  const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
+  // Use daysBetween for DST-safe week calculation
+  const totalDays = daysBetween(assignedDate, today);
+  const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+  const dayOfWeek = totalDays % 7;
 
   // Group completions by day within this week
   const dailyCounts = {};
   completions.forEach(c => {
     const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-    const weekNum = Math.floor((cDate - assignedDate) / msPerWeek);
+    const cDay = toMidnight(cDate);
+    const cDays = daysBetween(assignedDate, cDay);
+    const weekNum = Math.floor(cDays / 7);
     if (weekNum === weeksSinceAssigned) {
-      const dayKey = cDate.toDateString();
+      const dayKey = cDay.toDateString();
       dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
     }
   });
@@ -138,8 +189,6 @@ export const isItemBehind = (item, now = new Date()) => {
   }
 
   // Calculate days remaining in this homework week (including today)
-  const weekStartMs = assignedDate.getTime() + (weeksSinceAssigned * msPerWeek);
-  const dayOfWeek = Math.floor((now.getTime() - weekStartMs) / msPerDay);
   const daysRemaining = 7 - dayOfWeek;
 
   // Max possible per day
@@ -170,26 +219,31 @@ export const isRequiredToday = (item, now = new Date()) => {
   const weeklyTarget = item.weeklyTarget || 7;
   const dailyCap = item.dailyCap || 999;
 
-  let assignedDate;
+  let rawAssigned;
   if (item.assignedDate?.toDate) {
-    assignedDate = item.assignedDate.toDate();
+    rawAssigned = item.assignedDate.toDate();
   } else if (item.assignedDate) {
-    assignedDate = new Date(item.assignedDate);
+    rawAssigned = new Date(item.assignedDate);
   } else {
-    assignedDate = now;
+    rawAssigned = now;
   }
+  const assignedDate = toMidnight(rawAssigned);
+  const today = toMidnight(now);
 
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const msPerWeek = 7 * msPerDay;
-  const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
+  // Use daysBetween for DST-safe week calculation
+  const totalDays = daysBetween(assignedDate, today);
+  const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+  const dayOfWeek = totalDays % 7;
 
   // Group completions by day within this week
   const dailyCounts = {};
   completions.forEach(c => {
     const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-    const weekNum = Math.floor((cDate - assignedDate) / msPerWeek);
+    const cDay = toMidnight(cDate);
+    const cDays = daysBetween(assignedDate, cDay);
+    const weekNum = Math.floor(cDays / 7);
     if (weekNum === weeksSinceAssigned) {
-      const dayKey = cDate.toDateString();
+      const dayKey = cDay.toDateString();
       dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
     }
   });
@@ -199,8 +253,6 @@ export const isRequiredToday = (item, now = new Date()) => {
     currentWeekCompletions += Math.min(count, dailyCap);
   }
 
-  const weekStartMs = assignedDate.getTime() + (weeksSinceAssigned * msPerWeek);
-  const dayOfWeek = Math.floor((now.getTime() - weekStartMs) / msPerDay);
   const daysRemaining = 7 - dayOfWeek;
 
   const maxPerDay = dailyCap < 999 ? dailyCap : 1;
@@ -281,13 +333,12 @@ export const formatTimeDisplay = (value) => {
  * @param {Array} homework - Array of homework items
  * @returns {string} 'green' | 'red' | 'warning' | 'idle' | 'neutral'
  */
-export const calculateAccountabilityStatus = (homework) => {
+export const calculateAccountabilityStatus = (homework, profile) => {
   if (!homework || homework.length === 0) return 'neutral';
+  if (isOnVacation(profile)) return 'vacation';
 
   const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const msPerWeek = 7 * msPerDay;
+  const today = toMidnight(now);
 
   const activeHomework = homework.filter(h => h.status === 'active');
   if (activeHomework.length === 0) return 'neutral';
@@ -301,29 +352,35 @@ export const calculateAccountabilityStatus = (homework) => {
     const dailyCap = hw.dailyCap || 999;
     const completions = hw.completions || [];
 
-    // Get assignedDate (same logic as HomeworkTile)
-    let assignedDate;
+    // Get assignedDate (same logic as HomeworkTile), normalized to midnight
+    let rawAssigned;
     if (hw.assignedDate?.toDate) {
-      assignedDate = hw.assignedDate.toDate();
+      rawAssigned = hw.assignedDate.toDate();
     } else if (hw.assignedDate) {
-      assignedDate = new Date(hw.assignedDate);
+      rawAssigned = new Date(hw.assignedDate);
     } else if (hw.assignedAt?.toDate) {
-      assignedDate = hw.assignedAt.toDate();
+      rawAssigned = hw.assignedAt.toDate();
     } else if (hw.assignedAt) {
-      assignedDate = new Date(hw.assignedAt);
+      rawAssigned = new Date(hw.assignedAt);
     } else {
-      assignedDate = new Date();
+      rawAssigned = new Date();
     }
+    const assignedDate = toMidnight(rawAssigned);
 
-    const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
+    // DST-safe week calculation
+    const totalDays = daysBetween(assignedDate, today);
+    const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+    const dayOfPeriod = totalDays % 7;
 
     // Count completions in current period (grouped by day, capped per day)
     const dailyCounts = {};
     completions.forEach(c => {
       const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      const weekNum = Math.floor((cDate - assignedDate) / msPerWeek);
+      const cDay = toMidnight(cDate);
+      const cDays = daysBetween(assignedDate, cDay);
+      const weekNum = Math.floor(cDays / 7);
       if (weekNum === weeksSinceAssigned) {
-        const dayKey = cDate.toDateString();
+        const dayKey = cDay.toDateString();
         dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
       }
     });
@@ -334,14 +391,12 @@ export const calculateAccountabilityStatus = (homework) => {
     }
 
     // Check if any completion today
-    const todayKey = todayStart.toDateString();
+    const todayKey = today.toDateString();
     if (dailyCounts[todayKey] && dailyCounts[todayKey] > 0) {
       anyDoneToday = true;
     }
 
     // Days remaining in this period (matches isItemBehind logic)
-    const weekStartMs = assignedDate.getTime() + (weeksSinceAssigned * msPerWeek);
-    const dayOfPeriod = Math.floor((now.getTime() - weekStartMs) / msPerDay);
     const daysRemaining = 7 - dayOfPeriod;
 
     // Week 1 pro-rate (scale by dailyCap for Think Lists)
@@ -371,6 +426,161 @@ export const calculateAccountabilityStatus = (homework) => {
 };
 
 /**
+ * Get the status color for a specific historical date across all homework items.
+ * Uses the same behind-check math as isItemBehind / calculateAPStreak.
+ * @param {Array} homework - Array of homework items
+ * @param {Date} targetDate - The date to evaluate (midnight-normalized)
+ * @returns {'green'|'red'|'gray'} Day status
+ */
+export const getDayStatus = (homework, targetDate) => {
+  if (!homework || homework.length === 0) return 'gray';
+
+  const target = toMidnight(targetDate);
+
+  const activeOnDate = homework.filter(h => {
+    if (h.status === 'cancelled') return false;
+    let assignedDate;
+    if (h.assignedDate?.toDate) assignedDate = h.assignedDate.toDate();
+    else if (h.assignedDate) assignedDate = new Date(h.assignedDate);
+    else return false;
+    return target >= toMidnight(assignedDate);
+  });
+
+  if (activeOnDate.length === 0) return 'gray';
+
+  let anyBehind = false;
+  let anyCompletions = false;
+
+  for (const hw of activeOnDate) {
+    const weeklyTarget = hw.weeklyTarget || 7;
+    const dailyCap = hw.dailyCap || 999;
+    const maxPerDay = dailyCap < 999 ? dailyCap : 1;
+
+    let rawAssigned;
+    if (hw.assignedDate?.toDate) rawAssigned = hw.assignedDate.toDate();
+    else if (hw.assignedDate) rawAssigned = new Date(hw.assignedDate);
+    else continue;
+
+    const assigned = toMidnight(rawAssigned);
+    // DST-safe week calculation
+    const totalDays = daysBetween(assigned, target);
+    const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+    const dayOfWeek = totalDays % 7;
+    // Week start as a proper date (DST-safe)
+    const weekStartDate = new Date(assigned.getFullYear(), assigned.getMonth(), assigned.getDate() + weeksSinceAssigned * 7);
+
+    // Count completions this homework-week up to and including targetDate
+    const dailyCounts = {};
+    for (const c of (hw.completions || [])) {
+      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
+      const cDay = toMidnight(cDate);
+      if (cDay >= weekStartDate && cDay <= target) {
+        const dayKey = cDay.getTime();
+        dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
+      }
+      // Check if any completion on the target date itself
+      if (cDay.getTime() === target.getTime()) anyCompletions = true;
+    }
+
+    let weekCompletions = 0;
+    for (const count of Object.values(dailyCounts)) {
+      weekCompletions += Math.min(count, dailyCap);
+    }
+
+    // Days remaining in week from this day forward (including this day)
+    const daysRemaining = 7 - dayOfWeek;
+    const maxPossibleRemaining = daysRemaining * maxPerDay;
+
+    // Week 1 pro-rate
+    const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+    const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
+
+    if ((weekCompletions + maxPossibleRemaining) < effectiveTarget) {
+      anyBehind = true;
+    }
+  }
+
+  if (anyBehind) return 'red';
+  if (anyCompletions) return 'green';
+  return 'gray';
+};
+
+/**
+ * Get detailed day status including which items are behind (for calendar "why" display).
+ * @param {Array} homework - Array of homework items
+ * @param {Date} targetDate - The date to evaluate
+ * @returns {{ status: 'green'|'red'|'gray', behindItems: Array<{title: string, current: number, target: number}> }}
+ */
+export const getDayDetails = (homework, targetDate) => {
+  if (!homework || homework.length === 0) return { status: 'gray', behindItems: [] };
+
+  const target = toMidnight(targetDate);
+
+  const activeOnDate = homework.filter(h => {
+    if (h.status === 'cancelled') return false;
+    let rawAssigned;
+    if (h.assignedDate?.toDate) rawAssigned = h.assignedDate.toDate();
+    else if (h.assignedDate) rawAssigned = new Date(h.assignedDate);
+    else return false;
+    return target >= toMidnight(rawAssigned);
+  });
+
+  if (activeOnDate.length === 0) return { status: 'gray', behindItems: [] };
+
+  const behindItems = [];
+  let anyCompletions = false;
+
+  for (const hw of activeOnDate) {
+    const weeklyTarget = hw.weeklyTarget || 7;
+    const dailyCap = hw.dailyCap || 999;
+    const maxPerDay = dailyCap < 999 ? dailyCap : 1;
+
+    let rawAssigned;
+    if (hw.assignedDate?.toDate) rawAssigned = hw.assignedDate.toDate();
+    else if (hw.assignedDate) rawAssigned = new Date(hw.assignedDate);
+    else continue;
+
+    const assigned = toMidnight(rawAssigned);
+    // DST-safe week calculation
+    const totalDays = daysBetween(assigned, target);
+    const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+    const dayOfWeek = totalDays % 7;
+    const weekStartDate = new Date(assigned.getFullYear(), assigned.getMonth(), assigned.getDate() + weeksSinceAssigned * 7);
+
+    const dailyCounts = {};
+    for (const c of (hw.completions || [])) {
+      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
+      const cDay = toMidnight(cDate);
+      if (cDay >= weekStartDate && cDay <= target) {
+        const dayKey = cDay.getTime();
+        dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
+      }
+      if (cDay.getTime() === target.getTime()) anyCompletions = true;
+    }
+
+    let weekCompletions = 0;
+    for (const count of Object.values(dailyCounts)) {
+      weekCompletions += Math.min(count, dailyCap);
+    }
+
+    const daysRemaining = 7 - dayOfWeek;
+    const maxPossibleRemaining = daysRemaining * maxPerDay;
+
+    const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+    const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
+
+    if ((weekCompletions + maxPossibleRemaining) < effectiveTarget) {
+      const weekEndDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + 6);
+      behindItems.push({ title: hw.title || 'Untitled', current: weekCompletions, target: effectiveTarget, weekEnd: weekEndDate });
+    }
+  }
+
+  if (behindItems.length > 0) return { status: 'red', behindItems };
+  if (anyCompletions) return { status: 'green', behindItems: [] };
+  return { status: 'gray', behindItems: [] };
+};
+
+/**
  * Calculate day streak from homework completions.
  * Rules:
  *   - Streak INCREASES on any day with at least 1 completion
@@ -379,7 +589,7 @@ export const calculateAccountabilityStatus = (homework) => {
  * @param {Array} homework - Array of homework items
  * @returns {number} Day streak count
  */
-export const calculateAPStreak = (homework) => {
+export const calculateAPStreak = (homework, profile) => {
   if (!homework || homework.length === 0) return 0;
   const activeHomework = homework.filter(h => h.status === 'active');
   if (activeHomework.length === 0) return 0;
@@ -404,6 +614,7 @@ export const calculateAPStreak = (homework) => {
   if (daySet.size === 0) return 0;
 
   // Check if any ACTIVE item is irrecoverably behind on a given date
+  // Uses day-count math (not ms arithmetic) to avoid DST errors
   const isAnyItemBehindOnDate = (checkDate) => {
     for (const hw of activeHomework) {
       const weeklyTarget = hw.weeklyTarget || 7;
@@ -415,33 +626,37 @@ export const calculateAPStreak = (homework) => {
       else if (hw.assignedDate) rawAssigned = new Date(hw.assignedDate);
       else continue; // no assigned date, skip
 
-      // Normalize assignedDate to midnight for consistent day arithmetic
-      const assignedMs = new Date(rawAssigned.getFullYear(), rawAssigned.getMonth(), rawAssigned.getDate()).getTime();
+      // Normalize assignedDate to midnight
+      const assigned = toMidnight(rawAssigned);
 
       // Don't check days before assignment
-      if (checkDate.getTime() < assignedMs) continue;
+      if (checkDate < assigned) continue;
 
-      const msPerWeek = 7 * msPerDay;
-      const weeksSinceAssigned = Math.max(0, Math.floor((checkDate.getTime() - assignedMs) / msPerWeek));
-      const weekStartMs = assignedMs + (weeksSinceAssigned * msPerWeek);
+      // Count calendar days since assignment (DST-safe)
+      const daysSinceAssigned = Math.round((checkDate - assigned) / msPerDay);
+      const weeksSinceAssigned = Math.floor(daysSinceAssigned / 7);
+      const dayOfWeek = daysSinceAssigned % 7;
+
+      // Week start as a proper date (DST-safe)
+      const weekStartDate = new Date(assigned.getFullYear(), assigned.getMonth(), assigned.getDate() + weeksSinceAssigned * 7);
+      const weekEndDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + 7);
 
       // Count completions this homework-week up to and including checkDate
-      let weekCompletions = 0;
       const dailyCounts = {};
       for (const c of (hw.completions || [])) {
         const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-        const cMs = new Date(cDate.getFullYear(), cDate.getMonth(), cDate.getDate()).getTime();
-        if (cMs >= weekStartMs && cMs <= checkDate.getTime()) {
-          const dayKey = cMs;
+        const cDay = toMidnight(cDate);
+        if (cDay >= weekStartDate && cDay <= checkDate) {
+          const dayKey = cDay.getTime();
           dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
         }
       }
+      let weekCompletions = 0;
       for (const count of Object.values(dailyCounts)) {
         weekCompletions += Math.min(count, dailyCap);
       }
 
       // Days remaining in week from this day forward (including this day)
-      const dayOfWeek = Math.floor((checkDate.getTime() - weekStartMs) / msPerDay);
       const daysRemaining = 7 - dayOfWeek;
       const maxPossibleRemaining = daysRemaining * maxPerDay;
 
@@ -456,16 +671,45 @@ export const calculateAPStreak = (homework) => {
     return false;
   };
 
-  // Walk backward from today
+  // Walk backward from today using date-based subtraction (not ms arithmetic)
+  // to avoid DST spring-forward skipping a day when subtracting 86400000ms
   let streak = 0;
-  let checkDayMs = todayMs;
+  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let daysBack = 0;
+  const maxDaysBack = Math.min(365, Math.ceil((todayMs - earliestCompletionMs) / msPerDay) + 1);
 
-  // Stop at earliest completion or 365 days, whichever is sooner
-  const stopMs = Math.max(earliestCompletionMs - msPerDay, todayMs - 365 * msPerDay);
+  while (daysBack <= maxDaysBack) {
+    const checkDate = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate() - daysBack);
 
-  while (checkDayMs >= stopMs) {
-    const checkDate = new Date(checkDayMs);
+    const checkDayMs = checkDate.getTime();
     const hasActivity = daySet.has(checkDayMs);
+
+    // Vacation days: check if user did REAL work or only auto-completions
+    if (isDateOnVacation(checkDate, profile)) {
+      if (hasActivity) {
+        const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+        let hasRealCompletion = false;
+        for (const hw of homework) {
+          const autoDateSet = new Set(hw.autoCompletedDates || []);
+          for (const c of (hw.completions || [])) {
+            const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
+            const cDayMs = new Date(cDate.getFullYear(), cDate.getMonth(), cDate.getDate()).getTime();
+            if (cDayMs === checkDayMs && !autoDateSet.has(dateStr)) {
+              hasRealCompletion = true;
+              break;
+            }
+          }
+          if (hasRealCompletion) break;
+        }
+        if (hasRealCompletion) {
+          streak++;
+        }
+        // else: only auto-completions → stagnation (no increment, no break)
+      }
+      // No activity on vacation → stagnation (no increment, no break)
+      daysBack++;
+      continue;
+    }
 
     if (hasActivity) {
       // Did something → streak increases
@@ -477,7 +721,7 @@ export const calculateAPStreak = (homework) => {
       }
       // Has cushion → stagnate (don't increment, don't break)
     }
-    checkDayMs -= msPerDay;
+    daysBack++;
   }
 
   return streak;

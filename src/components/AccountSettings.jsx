@@ -32,8 +32,8 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
 
   // Reminder preferences (counselee only)
   const [phone, setPhone] = useState(userProfile?.phone || '');
-  const [smsReminders, setSmsReminders] = useState(userProfile?.smsReminders ?? false);
-  const [emailReminders, setEmailReminders] = useState(userProfile?.emailReminders ?? false);
+  const [smsReminders, setSmsReminders] = useState(userProfile?.smsReminders ?? !!userProfile?.phone);
+  const [emailReminders, setEmailReminders] = useState(userProfile?.emailReminders ?? true);
 
   // Per-day reminder schedule with 3 slots each
   const defaultSchedule = {
@@ -57,48 +57,37 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
   useEffect(() => {
     setName(userProfile?.name || '');
     setPhone(userProfile?.phone || '');
-    setSmsReminders(userProfile?.smsReminders ?? false);
-    setEmailReminders(userProfile?.emailReminders ?? false);
+    setSmsReminders(userProfile?.smsReminders ?? !!userProfile?.phone);
+    setEmailReminders(userProfile?.emailReminders ?? true);
     setReminderSchedule(userProfile?.reminderSchedule || defaultSchedule);
     setSessionTemplate(userProfile?.sessionTemplate || '');
   }, [userProfile?.phone, userProfile?.smsReminders, userProfile?.emailReminders, userProfile?.reminderSchedule, userProfile?.sessionTemplate]);
 
-  // Parse user-typed time into HH:MM format
-  const parseTime = (input) => {
-    if (!input || input.trim() === '') return '';
-    const str = input.trim().toLowerCase();
-
-    // Try to match various formats: "3:35pm", "3:35 pm", "15:35", "3pm", "3 pm"
-    const match = str.match(/^(\d{1,2}):?(\d{2})?\s*(am|pm|a|p)?$/i);
-    if (!match) return input; // Return as-is if can't parse
-
-    let hours = parseInt(match[1], 10);
-    const minutes = match[2] ? parseInt(match[2], 10) : 0;
-    const period = match[3]?.toLowerCase();
-
-    // Handle AM/PM
-    if (period === 'pm' || period === 'p') {
-      if (hours < 12) hours += 12;
-    } else if (period === 'am' || period === 'a') {
-      if (hours === 12) hours = 0;
+  // Generate 30-min increment time options
+  const timeOptions = (() => {
+    const opts = [{ value: '', label: '—' }];
+    for (let h = 0; h < 24; h++) {
+      for (const m of [0, 30]) {
+        const val = h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0');
+        const displayH = h % 12 || 12;
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const label = m === 0 ? `${displayH} ${ampm}` : `${displayH}:${m.toString().padStart(2, '0')} ${ampm}`;
+        opts.push({ value: val, label });
+      }
     }
+    return opts;
+  })();
 
-    // Validate
-    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return input;
-
-    return hours.toString().padStart(2, '0') + ':' + minutes.toString().padStart(2, '0');
-  };
-
-  // Format HH:MM to display format like "3:35 PM"
-  const formatTimeDisplay = (value) => {
+  // Snap any stored time to nearest 30-min increment
+  const snapTo30 = (value) => {
     if (!value) return '';
     const match = value.match(/^(\d{2}):(\d{2})$/);
     if (!match) return value;
-    let hours = parseInt(match[1], 10);
-    const minutes = match[2];
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12 || 12;
-    return minutes === '00' ? `${hours} ${ampm}` : `${hours}:${minutes} ${ampm}`;
+    const h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    const snapped = m < 15 ? 0 : m < 45 ? 30 : 0;
+    const snappedH = m >= 45 ? (h + 1) % 24 : h;
+    return snappedH.toString().padStart(2, '0') + ':' + snapped.toString().padStart(2, '0');
   };
 
   const updateSlot = (day, slot, value) => {
@@ -106,11 +95,6 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
       ...prev,
       [day]: { ...prev[day], [slot]: value }
     }));
-  };
-
-  const handleTimeBlur = (day, slot, value) => {
-    const parsed = parseTime(value);
-    updateSlot(day, slot, parsed);
   };
 
   const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -428,27 +412,17 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
                   {days.map(day => (
                     <div key={day} className="schedule-row">
                       <span className="day-label">{dayLabels[day]}</span>
-                      <input
-                        type="text"
-                        placeholder="9am"
-                        value={formatTimeDisplay(reminderSchedule[day]?.slot1)}
-                        onChange={e => updateSlot(day, 'slot1', e.target.value)}
-                        onBlur={e => handleTimeBlur(day, 'slot1', e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        placeholder="—"
-                        value={formatTimeDisplay(reminderSchedule[day]?.slot2)}
-                        onChange={e => updateSlot(day, 'slot2', e.target.value)}
-                        onBlur={e => handleTimeBlur(day, 'slot2', e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        placeholder="—"
-                        value={formatTimeDisplay(reminderSchedule[day]?.slot3)}
-                        onChange={e => updateSlot(day, 'slot3', e.target.value)}
-                        onBlur={e => handleTimeBlur(day, 'slot3', e.target.value)}
-                      />
+                      {['slot1', 'slot2', 'slot3'].map(slot => (
+                        <select
+                          key={slot}
+                          value={snapTo30(reminderSchedule[day]?.[slot])}
+                          onChange={e => updateSlot(day, slot, e.target.value)}
+                        >
+                          {timeOptions.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      ))}
                     </div>
                   ))}
                 </div>
