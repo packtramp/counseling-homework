@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useAppNavigation, getViewState } from '../hooks/useAppNavigation';
 import { db, auth } from '../config/firebase';
@@ -10,7 +11,7 @@ import HeartJournalsTile from '../components/HeartJournalsTile';
 import HeartJournalPage from '../components/HeartJournalPage';
 import ThinkListsTile from '../components/ThinkListsTile';
 import ThinkListPage from '../components/ThinkListPage';
-import AccountSettings from '../components/AccountSettings';
+// AccountSettings removed — now at /settings route
 import ProfilePhoto from '../components/ProfilePhoto';
 import FamilyLinkModal from '../components/FamilyLinkModal';
 import ActivityHistoryTile from '../components/ActivityHistoryTile';
@@ -20,7 +21,8 @@ import JournalingPage from '../components/JournalingPage';
 import AccountabilityModal from '../components/AccountabilityModal';
 import AccountabilityPartnersTile from '../components/AccountabilityPartnersTile';
 import AccountabilityPartnersModal from '../components/AccountabilityPartnersModal';
-import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateWeekStreak } from '../utils/homeworkHelpers';
+import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateWeekStreak, isOnVacation } from '../utils/homeworkHelpers';
+import VacationBanner from '../components/VacationBanner';
 import OnboardingModal from '../components/OnboardingModal';
 import PrayerRequestsTile from '../components/PrayerRequestsTile';
 import PrayerRequestPage from '../components/PrayerRequestPage';
@@ -36,29 +38,11 @@ const updateUrl = (params) => {
 
 export default function UnifiedDashboard() {
   const { user, userProfile, isCounselor, isSuperAdmin, logout } = useAuth();
+  const navigate = useNavigate();
 
   // UI state
-  const [activeSection, setActiveSection] = useState('me'); // 'me', 'counselees', or 'admin'
-  const [showSettings, setShowSettings] = useState(false);
+  const [activeSection, setActiveSection] = useState('me'); // 'me' or 'counselees'
   const [loading, setLoading] = useState(true);
-
-  // Admin section state
-  const [adminSearchQuery, setAdminSearchQuery] = useState('');
-  const [adminSearchResults, setAdminSearchResults] = useState([]);
-  const [adminSearchLoading, setAdminSearchLoading] = useState(false);
-  const [adminSearchError, setAdminSearchError] = useState('');
-  const [adminToggling, setAdminToggling] = useState(null);
-  const [showInviteForm, setShowInviteForm] = useState(false);
-  const [inviteData, setInviteData] = useState({ name: '', email: '' });
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteError, setInviteError] = useState('');
-  const [inviteSuccess, setInviteSuccess] = useState('');
-  const [allUsers, setAllUsers] = useState([]);
-  const [allUsersLoading, setAllUsersLoading] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const [editUserForm, setEditUserForm] = useState({ name: '', email: '' });
-  const [editUserLoading, setEditUserLoading] = useState(false);
-  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
 
   // "Me" section state (user's own data)
   const [myData, setMyData] = useState(null);
@@ -81,12 +65,10 @@ export default function UnifiedDashboard() {
   const [watchedUserThinkLists, setWatchedUserThinkLists] = useState([]);
   const [watchedUserJournals, setWatchedUserJournals] = useState([]);
   const [watchedUserActivityLog, setWatchedUserActivityLog] = useState([]);
-  const [watchedUserSessions, setWatchedUserSessions] = useState([]);
   const [viewingWatchedHeartJournal, setViewingWatchedHeartJournal] = useState(null);
   const [viewingWatchedThinkList, setViewingWatchedThinkList] = useState(null);
   const [viewingWatchedJournal, setViewingWatchedJournal] = useState(null);
   const [showWatchedActivityHistory, setShowWatchedActivityHistory] = useState(false);
-  const [selectedWatchedSession, setSelectedWatchedSession] = useState(null);
   const [pendingRequests, setPendingRequests] = useState([]); // Incoming AP invite tiles
   const [respondingTo, setRespondingTo] = useState(null); // Request being responded to (popup)
 
@@ -212,6 +194,52 @@ export default function UnifiedDashboard() {
     initSelfData();
   }, [user, userProfile]);
 
+  // One-time migration: backfill default reminder slots, then verify
+  useEffect(() => {
+    if (!user || !isSuperAdmin) return;
+
+    const runMigration = async () => {
+      try {
+        const idToken = await auth.currentUser.getIdToken();
+        const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` };
+
+        // Run backfill if not done yet
+        if (!localStorage.getItem('backfill-reminders-v1')) {
+          const backfillResp = await fetch('/api/toggle-counselor', {
+            method: 'POST', headers,
+            body: JSON.stringify({ action: 'backfillReminders' })
+          });
+          const backfillData = await backfillResp.json();
+          console.log('Reminder backfill complete:', backfillData);
+          localStorage.setItem('backfill-reminders-v1', 'done');
+        }
+
+        // Always verify (until we remove this code)
+        if (!localStorage.getItem('verify-reminders-v1')) {
+          const verifyResp = await fetch('/api/toggle-counselor', {
+            method: 'POST', headers,
+            body: JSON.stringify({ action: 'verifyReminders' })
+          });
+          const verifyData = await verifyResp.json();
+          console.log('=== REMINDER VERIFICATION ===');
+          console.log('Users:', verifyData.users);
+          console.log('Counselees:', verifyData.counselees);
+          const userIssues = verifyData.users?.filter(u => u.status !== 'OK') || [];
+          const counseleeIssues = verifyData.counselees?.filter(c => c.status !== 'OK') || [];
+          if (userIssues.length === 0 && counseleeIssues.length === 0) {
+            console.log('ALL USERS VERIFIED - all 3 reminder slots filled');
+            localStorage.setItem('verify-reminders-v1', 'done');
+          } else {
+            console.warn('Issues found:', { userIssues, counseleeIssues });
+          }
+        }
+      } catch (err) {
+        console.error('Reminder migration/verify failed:', err);
+      }
+    };
+    runMigration();
+  }, [user, isSuperAdmin]);
+
   // Load "Me" section data
   useEffect(() => {
     if (!user || !userProfile) return;
@@ -306,7 +334,7 @@ export default function UnifiedDashboard() {
     });
 
     // Listen to my activity log
-    const alQuery = query(collection(db, `${basePath}/activityLog`), orderBy('timestamp', 'desc'), limit(20));
+    const alQuery = query(collection(db, `${basePath}/activityLog`), orderBy('timestamp', 'desc'), limit(200));
     const unsubAl = onSnapshot(alQuery, (snapshot) => {
       setMyActivityLog(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
@@ -434,17 +462,22 @@ export default function UnifiedDashboard() {
           }
           if (!dataPath) dataPath = `counselors/${person.uid}/counselees/${person.uid}`;
 
-          // Get photo and streak once (non-realtime)
+          // Get photo, streak, and vacation status once (non-realtime)
           let photoUrl = null;
           let streak = 0;
+          let personProfile = null;
           try {
             const counseleeDoc = await getDoc(doc(db, dataPath));
             const counseleeData = counseleeDoc.exists() ? counseleeDoc.data() : {};
             photoUrl = counseleeData.counseleePhotoUrl || counseleeData.photoUrl || null;
             streak = counseleeData.currentStreak || 0;
-            if (!photoUrl && person.uid) {
+            if (person.uid) {
               const userDoc = await getDoc(doc(db, 'users', person.uid));
-              if (userDoc.exists()) photoUrl = userDoc.data().photoUrl || null;
+              if (userDoc.exists()) {
+                const uData = userDoc.data();
+                if (!photoUrl) photoUrl = uData.photoUrl || null;
+                personProfile = uData;
+              }
             }
           } catch (e) { /* Ignore photo errors */ }
 
@@ -452,13 +485,13 @@ export default function UnifiedDashboard() {
           const hwRef = collection(db, `${dataPath}/homework`);
           const unsub = onSnapshot(hwRef, (snapshot) => {
             const homework = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            const status = calculateAccountabilityStatus(homework);
+            const status = calculateAccountabilityStatus(homework, personProfile);
             // Calculate streak live from homework completions (not stale closure)
-            const liveStreak = calculateAPStreak(homework);
+            const liveStreak = calculateAPStreak(homework, personProfile);
             const liveWeekStreak = calculateWeekStreak(homework);
             setWatchingUsersStatus(prev => ({
               ...prev,
-              [person.uid]: { status, streak: liveStreak, weekStreak: liveWeekStreak, photoUrl }
+              [person.uid]: { status, streak: liveStreak, weekStreak: liveWeekStreak, photoUrl, onVacation: status === 'vacation' }
             }));
           }, (error) => {
             console.error('Listener error for AP homework (' + person.name + '):', error.code, error.message);
@@ -689,7 +722,7 @@ export default function UnifiedDashboard() {
     if (!encouragementDetail) return null;
     const { uid, type } = encouragementDetail;
     const items = allEncouragements.filter(e => e.recipientUid === uid && e.type === type);
-    const typeLabels = { cheer: '👍 Cheers', nudge: '👊 Fist Bumps', message: '💬 Messages' };
+    const typeLabels = { cheer: '👍 Cheers', nudge: '👊 Nudges', message: '💬 Messages' };
     return (
       <div className="modal-overlay" onClick={() => setEncouragementDetail(null)}>
         <div className="modal-content encouragement-detail-modal" onClick={e => e.stopPropagation()}>
@@ -726,6 +759,7 @@ export default function UnifiedDashboard() {
       case 'idle': return '#a0aec0';       // gray for streak circle (idle)
       case 'warning': return '#d69e2e';
       case 'red': return '#e53e3e';
+      case 'vacation': return '#3182ce';   // blue for vacation
       default: return '#a0aec0';
     }
   };
@@ -737,6 +771,7 @@ export default function UnifiedDashboard() {
       case 'warning': return 'Required today';
       case 'red': return 'Behind';
       case 'neutral': return 'No homework';
+      case 'vacation': return 'On vacation';
       default: return '';
     }
   };
@@ -866,7 +901,6 @@ export default function UnifiedDashboard() {
       setWatchedUserThinkLists([]);
       setWatchedUserJournals([]);
       setWatchedUserActivityLog([]);
-      setWatchedUserSessions([]);
       return;
     }
 
@@ -904,20 +938,12 @@ export default function UnifiedDashboard() {
       setWatchedUserJournals([]);
     });
 
-    const alQuery = query(collection(db, `${basePath}/activityLog`), orderBy('timestamp', 'desc'), limit(20));
+    const alQuery = query(collection(db, `${basePath}/activityLog`), orderBy('timestamp', 'desc'), limit(200));
     const unsubAl = onSnapshot(alQuery, (snapshot) => {
       setWatchedUserActivityLog(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       console.error('Error loading watched user activity log:', error);
       setWatchedUserActivityLog([]);
-    });
-
-    const sessQuery = query(collection(db, `${basePath}/sessions`), orderBy('date', 'desc'));
-    const unsubSess = onSnapshot(sessQuery, (snapshot) => {
-      setWatchedUserSessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      console.error('Error loading watched user sessions:', error);
-      setWatchedUserSessions([]);
     });
 
     return () => {
@@ -926,7 +952,6 @@ export default function UnifiedDashboard() {
       unsubTl();
       unsubJn();
       unsubAl();
-      unsubSess();
     };
   }, [selectedWatchedUser, resolvedWatchedPath]);
 
@@ -942,12 +967,6 @@ export default function UnifiedDashboard() {
     updateUrl(params);
   }, [selectedCounselee, selectedCounseleeSession]);
 
-  // Auto-load all users when admin section is active
-  useEffect(() => {
-    if (activeSection === 'admin' && isSuperAdmin && allUsers.length === 0 && !allUsersLoading) {
-      handleLoadAllUsers();
-    }
-  }, [activeSection, isSuperAdmin]);
 
   // Browser back button handler
   const handleGoBack = useCallback(() => {
@@ -960,8 +979,6 @@ export default function UnifiedDashboard() {
       setViewingWatchedThinkList(null);
     } else if (viewingWatchedHeartJournal) {
       setViewingWatchedHeartJournal(null);
-    } else if (selectedWatchedSession) {
-      setSelectedWatchedSession(null);
     } else if (selectedWatchedUser) {
       setSelectedWatchedUser(null);
     } else if (viewingMyPrayerRequest) {
@@ -990,7 +1007,7 @@ export default function UnifiedDashboard() {
       setSelectedCounselee(null);
     }
   }, [viewingWatchedJournal, showWatchedActivityHistory, viewingWatchedThinkList, viewingWatchedHeartJournal,
-      selectedWatchedSession, selectedWatchedUser, viewingMyPrayerRequest, viewingMyJournal, showMyActivityHistory, viewingMyThinkList,
+      selectedWatchedUser, viewingMyPrayerRequest, viewingMyJournal, showMyActivityHistory, viewingMyThinkList,
       viewingMyHeartJournal, selectedMySession, viewingCounseleeJournal, showCounseleeActivityHistory,
       viewingCounseleeThinkList, viewingCounseleeHeartJournal, selectedCounseleeSession, selectedCounselee]);
 
@@ -1147,11 +1164,27 @@ export default function UnifiedDashboard() {
   };
 
   const handleUpdateMyProfile = async (updates) => {
+    // Check if SMS is being enabled for welcome message
+    const wasSmsEnabled = myProfile?.smsReminders;
+    const nowSmsEnabled = updates.smsReminders;
+    const phone = updates.phone || myProfile?.phone;
+
     // Optimistically update local state so changes are available immediately
     setMyProfile(prev => ({ ...prev, ...updates }));
 
     const userRef = doc(db, 'users', user.uid);
     await updateDoc(userRef, updates);
+
+    // Send welcome SMS when user enables SMS reminders (non-blocking)
+    if (!wasSmsEnabled && nowSmsEnabled && phone) {
+      auth.currentUser.getIdToken().then(idToken => {
+        fetch('/api/toggle-counselor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+          body: JSON.stringify({ action: 'sendWelcomeSms', phone })
+        }).catch(err => console.error('Welcome SMS failed:', err));
+      }).catch(e => console.error('Welcome SMS token error:', e));
+    }
 
     // Also update the data doc if name or photo changed
     const dataUpdates = {};
@@ -1417,7 +1450,10 @@ export default function UnifiedDashboard() {
           counselorId: user.uid,
           counseleeDocId: counseleeRef.id,
           createdAt: serverTimestamp(),
-          onboardingStep: 0
+          onboardingStep: 0,
+          emailReminders: true,
+          smsReminders: false,
+          reminderSchedule: defaultSchedule
         });
       }
 
@@ -1610,6 +1646,27 @@ export default function UnifiedDashboard() {
     });
   };
 
+  const handleCounseleeCompleteHomework = async (homeworkItem) => {
+    if (completingId) return;
+    setCompletingId(homeworkItem.id);
+    try {
+      const basePath = `counselors/${user.uid}/counselees/${selectedCounselee.id}`;
+      await updateDoc(doc(db, `${basePath}/homework`, homeworkItem.id), {
+        completions: arrayUnion(Timestamp.now())
+      });
+      await addDoc(collection(db, `${basePath}/activityLog`), {
+        action: 'homework_completed',
+        actor: 'counselor',
+        actorUid: user.uid,
+        actorName: userProfile?.name || 'Counselor',
+        details: `Completed "${homeworkItem.title}" (marked by counselor)`,
+        timestamp: serverTimestamp()
+      });
+    } finally {
+      setCompletingId(null);
+    }
+  };
+
   const handleCounseleeUncheckHomework = async (homeworkItem) => {
     if (!homeworkItem.completions?.length) return;
     const basePath = `counselors/${user.uid}/counselees/${selectedCounselee.id}`;
@@ -1708,228 +1765,6 @@ export default function UnifiedDashboard() {
     }
   };
 
-  // ========== ADMIN SECTION HANDLERS ==========
-
-  const handleAdminSearch = async () => {
-    if (!adminSearchQuery || adminSearchQuery.length < 2) {
-      setAdminSearchError('Enter at least 2 characters');
-      return;
-    }
-
-    setAdminSearchError('');
-    setAdminSearchLoading(true);
-    setAdminSearchResults([]);
-
-    try {
-      const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch(`/api/list-users?q=${encodeURIComponent(adminSearchQuery)}`, {
-        headers: { 'Authorization': `Bearer ${idToken}` }
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Search failed');
-      }
-
-      setAdminSearchResults(data.users || []);
-      if (data.users?.length === 0) {
-        setAdminSearchError('No users found. Click "Invite User" to create a new account.');
-      }
-    } catch (error) {
-      setAdminSearchError(error.message);
-    } finally {
-      setAdminSearchLoading(false);
-    }
-  };
-
-  const handleToggleCounselor = async (targetUid, currentValue) => {
-    setAdminToggling(targetUid);
-
-    try {
-      const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch('/api/toggle-counselor', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({ targetUid, isCounselor: !currentValue })
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Toggle failed');
-      }
-
-      // Update local state
-      setAdminSearchResults(prev =>
-        prev.map(u => u.uid === targetUid ? { ...u, isCounselor: !currentValue } : u)
-      );
-    } catch (error) {
-      alert('Error: ' + error.message);
-    } finally {
-      setAdminToggling(null);
-    }
-  };
-
-  const handleInviteUser = async (e) => {
-    e.preventDefault();
-    if (!inviteData.name || !inviteData.email) {
-      setInviteError('Name and email are required');
-      return;
-    }
-
-    setInviteError('');
-    setInviteSuccess('');
-    setInviteLoading(true);
-
-    try {
-      const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch('/api/send-invite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({
-          email: inviteData.email.toLowerCase().trim(),
-          name: inviteData.name.trim(),
-          inviterName: user.displayName || 'Admin',
-          inviterUid: user.uid
-        })
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Invite failed');
-      }
-
-      // Store pending invite for auto-linking on signup
-      const emailKey = inviteData.email.toLowerCase().trim().replace(/[.]/g, '_');
-      await setDoc(doc(db, 'pendingInvites', emailKey), {
-        inviterUid: user.uid,
-        inviterName: user.displayName || 'Admin',
-        invitedEmail: inviteData.email.toLowerCase().trim(),
-        invitedName: inviteData.name.trim(),
-        createdAt: serverTimestamp()
-      });
-
-      setInviteSuccess('Invite sent!');
-      setInviteData({ name: '', email: '' });
-
-      // Refresh search if we had a search query
-      if (adminSearchQuery) {
-        handleAdminSearch();
-      }
-    } catch (error) {
-      setInviteError(error.message);
-    } finally {
-      setInviteLoading(false);
-    }
-  };
-
-  const handleLoadAllUsers = async () => {
-    setAllUsersLoading(true);
-    try {
-      const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch('/api/list-users', {
-        headers: { 'Authorization': `Bearer ${idToken}` }
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to load users');
-      }
-
-      setAllUsers(data.users || []);
-    } catch (error) {
-      console.error('Error loading all users:', error);
-      alert('Error: ' + error.message);
-    } finally {
-      setAllUsersLoading(false);
-    }
-  };
-
-  const formatTimeAgo = (timestamp) => {
-    if (!timestamp) return 'Never';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp._seconds ? timestamp._seconds * 1000 : timestamp);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
-  const handleEditUser = (userToEdit) => {
-    setEditingUser(userToEdit);
-    setEditUserForm({ name: userToEdit.name || '', email: userToEdit.email || '' });
-  };
-
-  const handleSaveUserEdit = async () => {
-    if (!editingUser) return;
-    setEditUserLoading(true);
-    try {
-      await updateDoc(doc(db, 'users', editingUser.uid), {
-        name: editUserForm.name,
-        email: editUserForm.email
-      });
-      // Update local state
-      setAllUsers(prev => prev.map(u =>
-        u.uid === editingUser.uid ? { ...u, name: editUserForm.name, email: editUserForm.email } : u
-      ));
-      setEditingUser(null);
-    } catch (error) {
-      alert('Error: ' + error.message);
-    } finally {
-      setEditUserLoading(false);
-    }
-  };
-
-  const handleResetPassword = async (targetEmail) => {
-    if (!window.confirm(`Send password reset email to ${targetEmail}?`)) return;
-    setResetPasswordLoading(true);
-    try {
-      // Use Firebase client SDK to send password reset
-      const { sendPasswordResetEmail } = await import('firebase/auth');
-      await sendPasswordResetEmail(auth, targetEmail);
-      alert('Password reset email sent!');
-    } catch (error) {
-      alert('Error: ' + error.message);
-    } finally {
-      setResetPasswordLoading(false);
-    }
-  };
-
-  const handleDeleteUser = async (targetUser) => {
-    if (targetUser.isSuperAdmin) {
-      alert('Cannot delete a superAdmin account.');
-      return;
-    }
-    if (!window.confirm(`DELETE ${targetUser.name || targetUser.email}?\n\nThis will permanently remove:\n- Firebase Auth account\n- Firestore user profile\n- All AP links referencing this user\n- All partner requests\n\nThis cannot be undone.`)) return;
-    if (!window.confirm(`Are you SURE? Type confirms delete of ${targetUser.email}.`)) return;
-    try {
-      const token = await user.getIdToken();
-      const response = await fetch('/api/delete-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ adminDelete: true, targetUid: targetUser.uid })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Delete failed');
-      setAllUsers(prev => prev.filter(u => u.uid !== targetUser.uid));
-      setEditingUser(null);
-      alert(`Deleted ${targetUser.name || targetUser.email}. Cleaned: Auth=${data.cleaned.auth}, AP links=${data.cleaned.apLinks}, Partner requests=${data.cleaned.partnerRequests}`);
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
-  };
-
   // Session navigation for counselee detail
   const currentCounseleeSessionIndex = selectedCounseleeSession
     ? counseleeSessions.findIndex(s => s.id === selectedCounseleeSession.id)
@@ -1982,6 +1817,7 @@ export default function UnifiedDashboard() {
     return (
       <ActivityHistoryPage
         activityLog={myActivityLog}
+        homework={myHomework}
         counseleeName={myData?.name || 'Me'}
         onClose={() => setShowMyActivityHistory(false)}
       />
@@ -2054,7 +1890,7 @@ export default function UnifiedDashboard() {
             <button className="nav-arrow" onClick={() => navigateMySession('older')} disabled={!hasOlder} title="Older session">&rarr;</button>
           </div>
           <div className="header-actions">
-            <button className="account-btn" onClick={() => setShowSettings(true)} title="Account Settings">
+            <button className="account-btn" onClick={() => navigate('/settings')} title="Account Settings">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
               </svg>
@@ -2062,7 +1898,6 @@ export default function UnifiedDashboard() {
             <button onClick={logout}>Sign Out</button>
           </div>
         </header>
-        <AccountSettings isOpen={showSettings} onClose={() => setShowSettings(false)} userProfile={{ name: myProfile?.name || '', uid: user?.uid, photoUrl: myProfile?.photoUrl, phone: myProfile?.phone, sessionTemplate: myProfile?.sessionTemplate, reminderSchedule: myProfile?.reminderSchedule, emailReminders: myProfile?.emailReminders, smsReminders: myProfile?.smsReminders }} onUpdateProfile={handleUpdateMyProfile} role="counselee" />
         <main>
           <div className="session-columns">
             <div className="session-homework-column">
@@ -2131,6 +1966,7 @@ export default function UnifiedDashboard() {
     return (
       <ActivityHistoryPage
         activityLog={counseleeActivityLog}
+        homework={counseleeHomework}
         counseleeName={selectedCounselee.name}
         onClose={() => setShowCounseleeActivityHistory(false)}
       />
@@ -2187,7 +2023,7 @@ export default function UnifiedDashboard() {
             <button className="nav-arrow" onClick={() => navigateCounseleeSession('older')} disabled={!hasOlderCounseleeSession} title="Older session">&rarr;</button>
           </div>
           <div className="header-actions">
-            <button className="account-btn" onClick={() => setShowSettings(true)} title="Account Settings">
+            <button className="account-btn" onClick={() => navigate('/settings')} title="Account Settings">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
               </svg>
@@ -2195,7 +2031,6 @@ export default function UnifiedDashboard() {
             <button onClick={logout}>Sign Out</button>
           </div>
         </header>
-        <AccountSettings isOpen={showSettings} onClose={() => setShowSettings(false)} userProfile={{ name: myProfile?.name || '', uid: user?.uid, photoUrl: myProfile?.photoUrl, phone: myProfile?.phone, sessionTemplate: myProfile?.sessionTemplate, reminderSchedule: myProfile?.reminderSchedule, emailReminders: myProfile?.emailReminders, smsReminders: myProfile?.smsReminders }} onUpdateProfile={handleUpdateMyProfile} role="counselor" />
         <main>
           <div className="session-date-row">
             <label>Session:</label>
@@ -2205,7 +2040,7 @@ export default function UnifiedDashboard() {
           </div>
           <div className="session-columns">
             <div className="session-homework-column">
-              <HomeworkTile homework={filteredHomework} role="counselor" showSessionFilter={true} sessionFilterOnly={sessionFilterOnly} onSessionFilterChange={setSessionFilterOnly} onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} />
+              <HomeworkTile homework={filteredHomework} role="counselor" showSessionFilter={true} sessionFilterOnly={sessionFilterOnly} onSessionFilterChange={setSessionFilterOnly} onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} onComplete={handleCounseleeCompleteHomework} completingId={completingId} />
             </div>
             <div className="session-notes-column">
               <Tile title="Session Notes">
@@ -2226,7 +2061,7 @@ export default function UnifiedDashboard() {
           <button className="back-btn" onClick={() => setSelectedCounselee(null)}>&larr; Back</button>
           <h1>{selectedCounselee.name}</h1>
           <div className="header-actions">
-            <button className="account-btn" onClick={() => setShowSettings(true)} title="Account Settings">
+            <button className="account-btn" onClick={() => navigate('/settings')} title="Account Settings">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
               </svg>
@@ -2234,7 +2069,6 @@ export default function UnifiedDashboard() {
             <button onClick={logout}>Sign Out</button>
           </div>
         </header>
-        <AccountSettings isOpen={showSettings} onClose={() => setShowSettings(false)} userProfile={{ name: myProfile?.name || '', uid: user?.uid, photoUrl: myProfile?.photoUrl, phone: myProfile?.phone, sessionTemplate: myProfile?.sessionTemplate, reminderSchedule: myProfile?.reminderSchedule, emailReminders: myProfile?.emailReminders, smsReminders: myProfile?.smsReminders }} onUpdateProfile={handleUpdateMyProfile} role="counselor" />
         <main>
           <div className="a-contact-info-row">
             <div className="a-contact-photos">
@@ -2270,44 +2104,49 @@ export default function UnifiedDashboard() {
               ) : (
                 <button className="graduate-btn" onClick={() => handleGraduateCounselee(true)}>Graduate</button>
               )}
+              <button className="activity-icon-btn" onClick={() => setShowCounseleeActivityHistory(true)} title="Activity History">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                  <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+                </svg>
+              </button>
             </div>
-            {selectedCounselee.uid && (
-              <>
-                {renderSendButtons(selectedCounselee.uid)}
-                {renderMessageInput(selectedCounselee.uid)}
-              </>
-            )}
-            {showActivateForm && !selectedCounselee.uid && (
-              <form className="add-form activate-form" onSubmit={async (e) => {
-                e.preventDefault();
-                setActivateError('');
-                setActivateLoading(true);
-                try {
-                  await handleActivateLogin(activateEmail, activatePassword);
-                  setShowActivateForm(false);
-                  setActivateEmail('');
-                  setActivatePassword('');
-                } catch (err) {
-                  setActivateError(err.message);
-                } finally {
-                  setActivateLoading(false);
-                }
-              }}>
-                <strong>Activate Login for {selectedCounselee.name}</strong>
-                <input type="email" placeholder="Email" value={activateEmail} onChange={(e) => setActivateEmail(e.target.value)} required />
-                <input type="text" placeholder="Temp Password (min 6 chars)" value={activatePassword} onChange={(e) => setActivatePassword(e.target.value)} required />
-                {activateError && <div className="error">{activateError}</div>}
-                <div className="form-buttons">
-                  <button type="submit" disabled={activateLoading}>{activateLoading ? 'Activating...' : 'Activate'}</button>
-                  <button type="button" onClick={() => { setShowActivateForm(false); setActivateError(''); }}>Cancel</button>
-                </div>
-              </form>
-            )}
           </div>
+          {selectedCounselee.uid && (
+            <div className="a-encouragement-row">
+              {renderSendButtons(selectedCounselee.uid)}
+              {renderMessageInput(selectedCounselee.uid)}
+            </div>
+          )}
+          {showActivateForm && !selectedCounselee.uid && (
+            <form className="add-form activate-form" onSubmit={async (e) => {
+              e.preventDefault();
+              setActivateError('');
+              setActivateLoading(true);
+              try {
+                await handleActivateLogin(activateEmail, activatePassword);
+                setShowActivateForm(false);
+                setActivateEmail('');
+                setActivatePassword('');
+              } catch (err) {
+                setActivateError(err.message);
+              } finally {
+                setActivateLoading(false);
+              }
+            }}>
+              <strong>Activate Login for {selectedCounselee.name}</strong>
+              <input type="email" placeholder="Email" value={activateEmail} onChange={(e) => setActivateEmail(e.target.value)} required />
+              <input type="text" placeholder="Temp Password (min 6 chars)" value={activatePassword} onChange={(e) => setActivatePassword(e.target.value)} required />
+              {activateError && <div className="error">{activateError}</div>}
+              <div className="form-buttons">
+                <button type="submit" disabled={activateLoading}>{activateLoading ? 'Activating...' : 'Activate'}</button>
+                <button type="button" onClick={() => { setShowActivateForm(false); setActivateError(''); }}>Cancel</button>
+              </div>
+            </form>
+          )}
           <FamilyLinkModal isOpen={showFamilyLinkModal} onClose={() => setShowFamilyLinkModal(false)} counselees={counselees} currentCounseleeId={selectedCounselee.id} onLink={handleLinkFamily} onAddCounselee={() => { setSelectedCounselee(null); setShowAddForm(true); }} />
           <div className="b-dashboard-grid">
             <div className="b-dashboard-left">
-              <HomeworkTile homework={counseleeHomework} role="counselor" onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} />
+              <HomeworkTile homework={counseleeHomework} role="counselor" onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} onComplete={handleCounseleeCompleteHomework} completingId={completingId} />
               <Tile title={`Sessions (${counseleeSessions.length})`} action={<button className="add-btn" onClick={handleAddCounseleeSession}>+ Session</button>}>
                 {counseleeSessions.length === 0 ? (
                   <p className="empty-list">No sessions yet. Click "+ Session" to start.</p>
@@ -2322,12 +2161,6 @@ export default function UnifiedDashboard() {
                   </ul>
                 )}
               </Tile>
-              <ActivityHistoryTile activityLog={counseleeActivityLog} onViewAll={() => setShowCounseleeActivityHistory(true)} />
-            </div>
-            <div className="b-dashboard-right">
-              <HeartJournalsTile journals={counseleeHeartJournals} role="counselor" onView={(j) => setViewingCounseleeHeartJournal(j)} />
-              <ThinkListsTile thinkLists={counseleeThinkLists} role="counselor" onView={(tl) => setViewingCounseleeThinkList(tl)} onAdd={() => setViewingCounseleeThinkList({})} />
-              <JournalingTile journals={counseleeJournals} role="counselor" onView={(j) => setViewingCounseleeJournal(j)} onAdd={() => setViewingCounseleeJournal({})} />
               {selectedCounselee?.uid && (
                 <PrayerRequestsTile
                   user={user}
@@ -2338,6 +2171,11 @@ export default function UnifiedDashboard() {
                   getAuthToken={() => auth.currentUser.getIdToken()}
                 />
               )}
+            </div>
+            <div className="b-dashboard-right">
+              <HeartJournalsTile journals={counseleeHeartJournals} role="counselor" onView={(j) => setViewingCounseleeHeartJournal(j)} />
+              <ThinkListsTile thinkLists={counseleeThinkLists} role="counselor" onView={(tl) => setViewingCounseleeThinkList(tl)} onAdd={() => setViewingCounseleeThinkList({})} />
+              <JournalingTile journals={counseleeJournals} role="counselor" onView={(j) => setViewingCounseleeJournal(j)} onAdd={() => setViewingCounseleeJournal({})} />
             </div>
           </div>
           {renderMessageModal()}
@@ -2389,6 +2227,7 @@ export default function UnifiedDashboard() {
     return (
       <ActivityHistoryPage
         activityLog={watchedUserActivityLog}
+        homework={watchedUserHomework}
         counseleeName={selectedWatchedUser.name}
         onClose={() => setShowWatchedActivityHistory(false)}
       />
@@ -2410,72 +2249,6 @@ export default function UnifiedDashboard() {
     );
   }
 
-  // Watched user session detail view (read-only)
-  if (selectedWatchedSession && selectedWatchedUser) {
-    // Session navigation
-    const currentWatchedSessionIndex = watchedUserSessions.findIndex(s => s.id === selectedWatchedSession.id);
-    const hasNewerWatchedSession = currentWatchedSessionIndex > 0;
-    const hasOlderWatchedSession = currentWatchedSessionIndex < watchedUserSessions.length - 1;
-
-    const navigateWatchedSession = (direction) => {
-      if (direction === 'newer' && hasNewerWatchedSession) {
-        setSelectedWatchedSession(watchedUserSessions[currentWatchedSessionIndex - 1]);
-      } else if (direction === 'older' && hasOlderWatchedSession) {
-        setSelectedWatchedSession(watchedUserSessions[currentWatchedSessionIndex + 1]);
-      }
-    };
-
-    // Filter homework for this session
-    const sessionHomework = watchedUserHomework.filter(h => h.sessionId === selectedWatchedSession.id);
-
-    return (
-      <div className="dashboard">
-        <header>
-          <button className="back-btn" onClick={() => setSelectedWatchedSession(null)}>&larr; Back</button>
-          <div className="session-nav">
-            <button className="nav-arrow" onClick={() => navigateWatchedSession('newer')} disabled={!hasNewerWatchedSession} title="Newer session">&larr;</button>
-            <span className="session-nav-label">{selectedWatchedUser.name}</span>
-            <button className="nav-arrow" onClick={() => navigateWatchedSession('older')} disabled={!hasOlderWatchedSession} title="Older session">&rarr;</button>
-          </div>
-          <div className="header-actions">
-            <button onClick={logout}>Sign Out</button>
-          </div>
-        </header>
-        <main>
-          <div className="accountability-view-header">
-            <span className="accountability-badge">Accountability View (Read Only)</span>
-          </div>
-          <div className="session-date-row">
-            <label>Session:</label>
-            <span className="session-date-display">{formatDate(selectedWatchedSession.date)}</span>
-          </div>
-          <div className="session-columns">
-            <div className="session-homework-column">
-              <HomeworkTile
-                homework={sessionHomework.length > 0 ? sessionHomework : watchedUserHomework}
-                role="accountability"
-                readOnly={true}
-              />
-            </div>
-            <div className="session-notes-column">
-              <div className="tile">
-                <div className="tile-header">
-                  <h3>Session Notes</h3>
-                </div>
-                <div className="tile-content">
-                  {selectedWatchedSession.notes ? (
-                    <div className="session-notes-readonly" dangerouslySetInnerHTML={{ __html: selectedWatchedSession.notes }} />
-                  ) : (
-                    <p className="empty-list">No notes for this session.</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
 
   // Watched user view (read-only accountability view)
   if (selectedWatchedUser) {
@@ -2506,6 +2279,11 @@ export default function UnifiedDashboard() {
               )}
             </div>
             <div className="ap-info-streaks">
+              <button className="activity-icon-btn" onClick={() => setShowWatchedActivityHistory(true)} title="Activity History">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                  <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+                </svg>
+              </button>
               {(() => {
                 const statusData = watchingUsersStatus[selectedWatchedUser.uid] || {};
                 const streak = statusData.streak || 0;
@@ -2540,33 +2318,16 @@ export default function UnifiedDashboard() {
                 role="accountability"
                 readOnly={true}
               />
-              {/* Sessions List (clickable) */}
-              <div className="tile">
-                <div className="tile-header">
-                  <h3>Sessions ({watchedUserSessions.length})</h3>
-                </div>
-                <div className="tile-content">
-                  {watchedUserSessions.length === 0 ? (
-                    <p className="empty-list">No sessions yet.</p>
-                  ) : (
-                    <ul className="session-list">
-                      {watchedUserSessions.map(session => (
-                        <li
-                          key={session.id}
-                          className="session-item"
-                          onClick={() => setSelectedWatchedSession(session)}
-                        >
-                          <span className="session-date">{formatDate(session.date)}</span>
-                          <span className="session-meta">
-                            {watchedUserHomework.filter(h => h.sessionId === session.id).length} homework
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-              <ActivityHistoryTile activityLog={watchedUserActivityLog} onViewAll={() => setShowWatchedActivityHistory(true)} />
+              {selectedWatchedUser?.uid && (
+                <PrayerRequestsTile
+                  user={user}
+                  userProfile={userProfile}
+                  role="accountability"
+                  targetUid={selectedWatchedUser.uid}
+                  targetName={selectedWatchedUser.name}
+                  getAuthToken={() => auth.currentUser.getIdToken()}
+                />
+              )}
             </div>
             <div className="b-dashboard-right">
               <HeartJournalsTile
@@ -2584,16 +2345,6 @@ export default function UnifiedDashboard() {
                 role="accountability"
                 onView={(j) => setViewingWatchedJournal(j)}
               />
-              {selectedWatchedUser?.uid && (
-                <PrayerRequestsTile
-                  user={user}
-                  userProfile={userProfile}
-                  role="accountability"
-                  targetUid={selectedWatchedUser.uid}
-                  targetName={selectedWatchedUser.name}
-                  getAuthToken={() => auth.currentUser.getIdToken()}
-                />
-              )}
             </div>
           </div>
           {renderMessageModal()}
@@ -2615,51 +2366,15 @@ export default function UnifiedDashboard() {
   // Main unified dashboard view
   return (
     <div className="dashboard">
-      <header>
-        <h1>Dashboard</h1>
-        <div className="header-actions">
-          <a className="help-btn" href="/help" title="Help">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
-            </svg>
-          </a>
-          <button className="account-btn" onClick={() => setShowSettings(true)} title="Account Settings">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-            </svg>
-          </button>
-          <button onClick={logout}>Sign Out</button>
-        </div>
-      </header>
-      <AccountSettings isOpen={showSettings} onClose={() => setShowSettings(false)} userProfile={{ name: myProfile?.name || '', uid: user?.uid, photoUrl: myProfile?.photoUrl, phone: myProfile?.phone, sessionTemplate: myProfile?.sessionTemplate, reminderSchedule: myProfile?.reminderSchedule, emailReminders: myProfile?.emailReminders, smsReminders: myProfile?.smsReminders }} onUpdateProfile={handleUpdateMyProfile} role={isCounselor ? 'counselor' : 'counselee'} />
       <main>
-        {/* Section tabs (only show if counselor or superAdmin) */}
-        {(isCounselor || isSuperAdmin) && (
-          <div className="section-tabs">
-            <button className={`section-tab ${activeSection === 'me' ? 'active' : ''}`} onClick={() => setActiveSection('me')}>
-              Me
-            </button>
-            {isCounselor && (
-              <button className={`section-tab ${activeSection === 'counselees' ? 'active' : ''}`} onClick={() => setActiveSection('counselees')}>
-                My Counselees ({counselees.length})
-              </button>
-            )}
-            {isSuperAdmin && (
-              <button className={`section-tab ${activeSection === 'admin' ? 'active' : ''}`} onClick={() => setActiveSection('admin')}>
-                Admin
-              </button>
-            )}
-          </div>
-        )}
-
         {/* "ME" SECTION */}
-        {activeSection === 'me' && (
-          <>
+        <>
+            <VacationBanner userProfile={userProfile} />
             <div className="greeting-row">
               <ProfilePhoto photoUrl={myData?.counseleePhotoUrl || myData?.photoUrl} size="small" />
               <p className="greeting">Hi, {myData?.name || userProfile?.name || 'there'}!</p>
               {myHomework.filter(h => h.status === 'active').length > 0 && (() => {
-                const dayStreak = calculateAPStreak(myHomework);
+                const dayStreak = calculateAPStreak(myHomework, userProfile);
                 const weekStr = calculateWeekStreak(myHomework);
                 return (dayStreak > 0 || weekStr > 0) ? (
                   <div className="personal-streak">
@@ -2697,7 +2412,7 @@ export default function UnifiedDashboard() {
                             allPrayers.push({
                               name: pData.prayerName,
                               date: pData.prayedAt,
-                              prText: prData.text?.substring(0, 40) || ''
+                              prText: prData.text?.substring(0, 80) || ''
                             });
                           });
                         }
@@ -2735,6 +2450,11 @@ export default function UnifiedDashboard() {
                   watchingMe={myWatchingUsers}
                   onClick={() => setShowAccountabilityPartnersModal(true)}
                 />
+                <button className="activity-icon-btn" onClick={() => setShowMyActivityHistory(true)} title="Activity History">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                    <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+                  </svg>
+                </button>
               </div>
             </div>
 
@@ -2833,6 +2553,78 @@ export default function UnifiedDashboard() {
               </div>
             )}
 
+            {/* My Counselees section (inline for counselors) */}
+            {isCounselor && (
+              <div className="my-counselees-section">
+                <div className="counselee-header">
+                  <h2>My Counselees</h2>
+                  <button className="add-btn" onClick={() => setShowAddForm(true)}>+ Add Counselee</button>
+                </div>
+
+                <div className="counselee-tabs">
+                  <button className={`tab-btn ${counseleeTab === 'active' ? 'active' : ''}`} onClick={() => setCounseleeTab('active')}>
+                    Active ({counselees.filter(c => !c.graduated).length})
+                  </button>
+                  <button className={`tab-btn ${counseleeTab === 'graduated' ? 'active' : ''}`} onClick={() => setCounseleeTab('graduated')}>
+                    Graduated ({counselees.filter(c => c.graduated).length})
+                  </button>
+                </div>
+
+                {showAddForm && (
+                  <form className="add-form" onSubmit={handleAddCounselee}>
+                    <input type="text" placeholder="Name" value={newCounselee.name} onChange={(e) => setNewCounselee({ ...newCounselee, name: e.target.value })} required />
+                    <input type="email" placeholder="Email (optional - skip to add without login)" value={newCounselee.email} onChange={(e) => setNewCounselee({ ...newCounselee, email: e.target.value, password: e.target.value ? newCounselee.password : '' })} />
+                    <input type="tel" placeholder="Phone (for SMS)" value={newCounselee.phone} onChange={(e) => setNewCounselee({ ...newCounselee, phone: e.target.value })} />
+                    {newCounselee.email.trim() && (
+                      <input type="text" placeholder="Temp Password (min 6 chars)" value={newCounselee.password} onChange={(e) => setNewCounselee({ ...newCounselee, password: e.target.value })} required />
+                    )}
+                    {formError && <div className="error">{formError}</div>}
+                    <div className="form-buttons">
+                      <button type="submit" disabled={formLoading}>{formLoading ? 'Creating...' : 'Add'}</button>
+                      <button type="button" onClick={() => { setShowAddForm(false); setFormError(''); }}>Cancel</button>
+                    </div>
+                  </form>
+                )}
+
+                {counselees.length === 0 ? (
+                  <p className="empty-state">No counselees yet. Click "Add Counselee" to get started.</p>
+                ) : (
+                  <ul className="counselee-list">
+                    {counselees
+                      .filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated)
+                      .map(counselee => {
+                        const behindCount = counseleeBehindStatus[counselee.id] || 0;
+                        return (
+                          <li key={counselee.id} className={`counselee-card clickable ${behindCount > 0 ? 'behind' : ''} ${counselee.graduated ? 'graduated' : ''}`} onClick={() => setSelectedCounselee(counselee)}>
+                            <div className="counselee-card-top">
+                              <ProfilePhoto photoUrl={counselee.photoUrl || counselee.counseleePhotoUrl} size="small" />
+                              <span className="status-dot" style={{ backgroundColor: getStatusColor(counselee) }}></span>
+                              <div className="counselee-info">
+                                <strong>{counselee.name}</strong>
+                                <span>{counselee.email || 'No email'}</span>
+                              </div>
+                              {!counselee.uid ? (
+                                <span className="no-login-badge">No login</span>
+                              ) : counselee.graduated ? (
+                                <span className="graduated-badge">Graduated</span>
+                              ) : behindCount > 0 ? (
+                                <span className="behind-badge">{behindCount} behind</span>
+                              ) : (
+                                <span className="streak">{counselee.currentStreak} day streak</span>
+                              )}
+                            </div>
+                            {counselee.uid && renderEncourageBar(counselee.uid)}
+                          </li>
+                        );
+                      })}
+                    {counselees.filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated).length === 0 && (
+                      <p className="empty-state">{counseleeTab === 'active' ? 'No active counselees.' : 'No graduated counselees.'}</p>
+                    )}
+                  </ul>
+                )}
+              </div>
+            )}
+
             <AccountabilityPartnersModal
               isOpen={showAccountabilityPartnersModal}
               onClose={() => setShowAccountabilityPartnersModal(false)}
@@ -2863,7 +2655,8 @@ export default function UnifiedDashboard() {
                   />
                 )}
 
-                {/* Sessions List */}
+                {/* Sessions List - show if user has a counselor or has session data */}
+                {(userProfile?.counselorId || mySessions.length > 0) && (
                 <div className="tile">
                   <div className="tile-header">
                     <h3>Sessions ({mySessions.length})</h3>
@@ -2892,32 +2685,11 @@ export default function UnifiedDashboard() {
                     )}
                   </div>
                 </div>
+                )}
 
-                <ActivityHistoryTile activityLog={myActivityLog} onViewAll={() => setShowMyActivityHistory(true)} />
               </div>
 
               <div className="b-dashboard-right">
-                <HeartJournalsTile
-                  journals={myHeartJournals}
-                  role="counselee"
-                  onView={(j) => setViewingMyHeartJournal(j)}
-                  onAdd={() => setViewingMyHeartJournal({})}
-                />
-
-                <ThinkListsTile
-                  thinkLists={myThinkLists}
-                  role="counselee"
-                  onView={(tl) => setViewingMyThinkList(tl)}
-                  onAdd={() => setViewingMyThinkList({})}
-                />
-
-                <JournalingTile
-                  journals={myJournals}
-                  role="counselee"
-                  onView={(j) => setViewingMyJournal(j)}
-                  onAdd={() => setViewingMyJournal({})}
-                />
-
                 <PrayerRequestsTile
                   user={user}
                   userProfile={userProfile}
@@ -2949,7 +2721,7 @@ export default function UnifiedDashboard() {
                         {prayerDetailList.map((p, i) => (
                           <li key={i} className="pr-detail-item">
                             <span className="pr-detail-name">{p.name}</span>
-                            <span className="pr-detail-text">{p.prText}{p.prText.length >= 40 ? '...' : ''}</span>
+                            <span className="pr-detail-text">{p.prText}{p.prText.length >= 80 ? '...' : ''}</span>
                             <span className="pr-detail-date">{p.date?.toDate ? p.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
                           </li>
                         ))}
@@ -2960,305 +2732,7 @@ export default function UnifiedDashboard() {
               </div>
             )}
           </>
-        )}
 
-        {/* "MY COUNSELEES" SECTION (only for counselors) */}
-        {activeSection === 'counselees' && isCounselor && (
-          <>
-            <div className="counselee-header">
-              <h2>My Counselees</h2>
-              <button className="add-btn" onClick={() => setShowAddForm(true)}>+ Add Counselee</button>
-            </div>
-
-            <div className="counselee-tabs">
-              <button className={`tab-btn ${counseleeTab === 'active' ? 'active' : ''}`} onClick={() => setCounseleeTab('active')}>
-                Active ({counselees.filter(c => !c.graduated).length})
-              </button>
-              <button className={`tab-btn ${counseleeTab === 'graduated' ? 'active' : ''}`} onClick={() => setCounseleeTab('graduated')}>
-                Graduated ({counselees.filter(c => c.graduated).length})
-              </button>
-            </div>
-
-            {showAddForm && (
-              <form className="add-form" onSubmit={handleAddCounselee}>
-                <input type="text" placeholder="Name" value={newCounselee.name} onChange={(e) => setNewCounselee({ ...newCounselee, name: e.target.value })} required />
-                <input type="email" placeholder="Email (optional - skip to add without login)" value={newCounselee.email} onChange={(e) => setNewCounselee({ ...newCounselee, email: e.target.value, password: e.target.value ? newCounselee.password : '' })} />
-                <input type="tel" placeholder="Phone (for SMS)" value={newCounselee.phone} onChange={(e) => setNewCounselee({ ...newCounselee, phone: e.target.value })} />
-                {newCounselee.email.trim() && (
-                  <input type="text" placeholder="Temp Password (min 6 chars)" value={newCounselee.password} onChange={(e) => setNewCounselee({ ...newCounselee, password: e.target.value })} required />
-                )}
-                {formError && <div className="error">{formError}</div>}
-                <div className="form-buttons">
-                  <button type="submit" disabled={formLoading}>{formLoading ? 'Creating...' : 'Add'}</button>
-                  <button type="button" onClick={() => { setShowAddForm(false); setFormError(''); }}>Cancel</button>
-                </div>
-              </form>
-            )}
-
-            {counselees.length === 0 ? (
-              <p className="empty-state">No counselees yet. Click "Add Counselee" to get started.</p>
-            ) : (
-              <ul className="counselee-list">
-                {counselees
-                  .filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated)
-                  .map(counselee => {
-                    const behindCount = counseleeBehindStatus[counselee.id] || 0;
-                    return (
-                      <li key={counselee.id} className={`counselee-card clickable ${behindCount > 0 ? 'behind' : ''} ${counselee.graduated ? 'graduated' : ''}`} onClick={() => setSelectedCounselee(counselee)}>
-                        <div className="counselee-card-top">
-                          <ProfilePhoto photoUrl={counselee.photoUrl || counselee.counseleePhotoUrl} size="small" />
-                          <span className="status-dot" style={{ backgroundColor: getStatusColor(counselee) }}></span>
-                          <div className="counselee-info">
-                            <strong>{counselee.name}</strong>
-                            <span>{counselee.email || 'No email'}</span>
-                          </div>
-                          {!counselee.uid ? (
-                            <span className="no-login-badge">No login</span>
-                          ) : counselee.graduated ? (
-                            <span className="graduated-badge">Graduated</span>
-                          ) : behindCount > 0 ? (
-                            <span className="behind-badge">{behindCount} behind</span>
-                          ) : (
-                            <span className="streak">{counselee.currentStreak} day streak</span>
-                          )}
-                        </div>
-                        {counselee.uid && renderEncourageBar(counselee.uid)}
-                      </li>
-                    );
-                  })}
-                {counselees.filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated).length === 0 && (
-                  <p className="empty-state">{counseleeTab === 'active' ? 'No active counselees.' : 'No graduated counselees.'}</p>
-                )}
-              </ul>
-            )}
-          </>
-        )}
-
-        {/* ADMIN SECTION (only for superAdmins) */}
-        {activeSection === 'admin' && isSuperAdmin && (
-          <>
-            <div className="admin-header">
-              <h2>Admin Panel</h2>
-            </div>
-
-            <div className="admin-search-section">
-              <h3>Search Users</h3>
-              <div className="admin-search-row">
-                <input
-                  type="text"
-                  placeholder="Search by name or email..."
-                  value={adminSearchQuery}
-                  onChange={(e) => setAdminSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAdminSearch()}
-                  className="admin-search-input"
-                />
-                <button
-                  className="admin-search-btn"
-                  onClick={handleAdminSearch}
-                  disabled={adminSearchLoading}
-                >
-                  {adminSearchLoading ? 'Searching...' : 'Search'}
-                </button>
-                <button
-                  className="admin-invite-btn"
-                  onClick={() => setShowInviteForm(!showInviteForm)}
-                >
-                  {showInviteForm ? 'Cancel' : '+ Invite User'}
-                </button>
-              </div>
-
-              {adminSearchError && (
-                <p className="admin-error">{adminSearchError}</p>
-              )}
-
-              {showInviteForm && (
-                <form className="admin-invite-form" onSubmit={handleInviteUser}>
-                  <h4>Invite New User</h4>
-                  <input
-                    type="text"
-                    placeholder="Full Name"
-                    value={inviteData.name}
-                    onChange={(e) => setInviteData({ ...inviteData, name: e.target.value })}
-                    required
-                  />
-                  <input
-                    type="email"
-                    placeholder="Email Address"
-                    value={inviteData.email}
-                    onChange={(e) => setInviteData({ ...inviteData, email: e.target.value })}
-                    required
-                  />
-                  {inviteError && <p className="admin-error">{inviteError}</p>}
-                  {inviteSuccess && <p className="admin-success">{inviteSuccess}</p>}
-                  <button type="submit" disabled={inviteLoading}>
-                    {inviteLoading ? 'Sending...' : 'Send Invite'}
-                  </button>
-                </form>
-              )}
-
-              {adminSearchResults.length > 0 && (
-                <div className="admin-results">
-                  <table className="admin-users-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Counselor</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {adminSearchResults.map(u => (
-                        <tr key={u.uid} className={u.isSuperAdmin ? 'superadmin-row' : ''}>
-                          <td>{u.name || '(no name)'}</td>
-                          <td>{u.email}</td>
-                          <td>
-                            <span className={`counselor-badge ${u.isCounselor ? 'yes' : 'no'}`}>
-                              {u.isCounselor ? 'Yes' : 'No'}
-                            </span>
-                          </td>
-                          <td>
-                            <button
-                              className={`toggle-counselor-btn ${u.isCounselor ? 'remove' : 'add'}`}
-                              onClick={() => handleToggleCounselor(u.uid, u.isCounselor)}
-                              disabled={adminToggling === u.uid || u.uid === user.uid}
-                              title={u.uid === user.uid ? "Can't modify yourself" : ''}
-                            >
-                              {adminToggling === u.uid
-                                ? '...'
-                                : u.isCounselor
-                                  ? 'Remove Counselor'
-                                  : 'Make Counselor'}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            <div className="admin-all-users-section">
-              <div className="admin-all-users-header">
-                <h3>All Users ({allUsers.length})</h3>
-                <button
-                  className="admin-load-btn"
-                  onClick={handleLoadAllUsers}
-                  disabled={allUsersLoading}
-                >
-                  {allUsersLoading ? 'Loading...' : allUsers.length > 0 ? 'Refresh' : 'Load All Users'}
-                </button>
-              </div>
-
-              {allUsers.length > 0 && (
-                <div className="admin-users-scroll">
-                  <table className="admin-users-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Last Login</th>
-                        <th>Last Activity</th>
-                        <th>APs</th>
-                        <th>Role</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allUsers.map(u => (
-                        <tr key={u.uid} className={u.isSuperAdmin ? 'superadmin-row' : ''}>
-                          <td>
-                            <button className="admin-name-btn" onClick={() => handleEditUser(u)}>
-                              {u.name || '(no name)'}
-                            </button>
-                          </td>
-                          <td className="email-cell">{u.email}</td>
-                          <td className="time-cell">{formatTimeAgo(u.lastLogin)}</td>
-                          <td className="time-cell">{formatTimeAgo(u.lastActivity)}</td>
-                          <td className="ap-count-cell">{u.apCount || 0}</td>
-                          <td>
-                            {u.isSuperAdmin && <span className="role-badge superadmin">Admin</span>}
-                            {u.isCounselor && !u.isSuperAdmin && <span className="role-badge counselor">Counselor</span>}
-                            {!u.isCounselor && !u.isSuperAdmin && <span className="role-badge user">User</span>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Edit User Modal */}
-              {editingUser && (
-                <div className="modal-overlay" onClick={() => setEditingUser(null)}>
-                  <div className="modal-content admin-edit-modal" onClick={(e) => e.stopPropagation()}>
-                    <div className="modal-header">
-                      <h2>Edit User</h2>
-                      <button className="modal-close" onClick={() => setEditingUser(null)}>&times;</button>
-                    </div>
-                    <div className="modal-body">
-                      <div className="form-group">
-                        <label>Name</label>
-                        <input
-                          type="text"
-                          value={editUserForm.name}
-                          onChange={(e) => setEditUserForm({ ...editUserForm, name: e.target.value })}
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Email</label>
-                        <input
-                          type="email"
-                          value={editUserForm.email}
-                          onChange={(e) => setEditUserForm({ ...editUserForm, email: e.target.value })}
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>UID</label>
-                        <input type="text" value={editingUser.uid} disabled className="disabled-input" />
-                      </div>
-                      <div className="form-group">
-                        <label>Role</label>
-                        <div className="role-display">
-                          {editingUser.isSuperAdmin && <span className="role-badge superadmin">Admin</span>}
-                          {editingUser.isCounselor && !editingUser.isSuperAdmin && <span className="role-badge counselor">Counselor</span>}
-                          {!editingUser.isCounselor && !editingUser.isSuperAdmin && <span className="role-badge user">User</span>}
-                        </div>
-                      </div>
-                      <div className="admin-edit-actions">
-                        <button
-                          className="reset-password-btn"
-                          onClick={() => handleResetPassword(editingUser.email)}
-                          disabled={resetPasswordLoading}
-                        >
-                          {resetPasswordLoading ? 'Sending...' : 'Send Password Reset Email'}
-                        </button>
-                        {!editingUser.isSuperAdmin && (
-                          <button
-                            className="admin-delete-user-btn"
-                            onClick={() => handleDeleteUser(editingUser)}
-                          >
-                            Delete User
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="modal-footer">
-                      <button className="cancel-btn" onClick={() => setEditingUser(null)}>Cancel</button>
-                      <button
-                        className="save-btn"
-                        onClick={handleSaveUserEdit}
-                        disabled={editUserLoading}
-                      >
-                        {editUserLoading ? 'Saving...' : 'Save Changes'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
       </main>
       {renderMessageModal()}
       {renderToast()}
