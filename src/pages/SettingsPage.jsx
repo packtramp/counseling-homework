@@ -158,8 +158,14 @@ export default function SettingsPage() {
     return snappedH.toString().padStart(2, '0') + ':' + snapped.toString().padStart(2, '0');
   };
 
-  const updateSlot = (day, slot, value) => {
-    setReminderSchedule(prev => ({ ...prev, [day]: { ...prev[day], [slot]: value } }));
+  const updateSlot = async (day, slot, value) => {
+    const newSchedule = { ...reminderSchedule, [day]: { ...reminderSchedule[day], [slot]: value } };
+    setReminderSchedule(newSchedule);
+    try {
+      await handleUpdateMyProfile({ reminderSchedule: newSchedule });
+    } catch (err) {
+      console.error('Auto-save reminder failed:', err);
+    }
   };
 
   const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
