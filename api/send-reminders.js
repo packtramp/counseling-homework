@@ -749,7 +749,7 @@ export default async function handler(req, res) {
         let emailSent = false;
         if (wantsEmail) {
           try {
-            await sendEmail(email, userName, currentCount, thinkListIncomplete, behindCount, matchedSlot, matchedSlot === 1 ? hwDetail : null);
+            await sendEmail(email, userName, itemsInCurrent, thinkListIncomplete, urgentUndone, matchedSlot, matchedSlot === 1 ? hwDetail : null);
             emailCount++;
             emailSent = true;
           } catch (err) {
