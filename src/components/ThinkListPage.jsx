@@ -434,6 +434,11 @@ export default function ThinkListPage({
 
     try {
       const deletedTitle = title || 'Untitled Think List';
+      // Cascade delete linked homework
+      const linkedHwId = editingThinkList?.linkedHomeworkId;
+      if (linkedHwId) {
+        await deleteDoc(doc(db, `${basePath}/homework`, linkedHwId));
+      }
       await deleteDoc(doc(db, `${basePath}/thinkLists`, currentThinkListId));
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'think_list_deleted',

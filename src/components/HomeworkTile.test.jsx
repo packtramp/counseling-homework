@@ -519,4 +519,60 @@ describe('HomeworkTile', () => {
       expect(screen.getByText('Save')).toBeInTheDocument();
     });
   });
+
+  describe('Think List Homework Navigation', () => {
+    const thinkListHomework = createHomework({
+      id: 'hw-tl-1',
+      title: 'Thinklist: Anxiety Thoughts',
+      linkedThinkListId: 'tl-123',
+      type: 'thinkList'
+    });
+
+    it('calls onOpenThinkList when clicking think list homework (B-side)', () => {
+      const mockOnOpenThinkList = vi.fn();
+      render(
+        <HomeworkTile
+          homework={[thinkListHomework]}
+          role="counselee"
+          onOpenThinkList={mockOnOpenThinkList}
+        />
+      );
+
+      // Think list items use the brain icon, click the container
+      const item = document.querySelector('.thinklist-item');
+      fireEvent.click(item);
+      expect(mockOnOpenThinkList).toHaveBeenCalledWith(thinkListHomework);
+    });
+
+    it('calls onOpenThinkList when clicking think list homework (A-side)', () => {
+      const mockOnOpenThinkList = vi.fn();
+      render(
+        <HomeworkTile
+          homework={[thinkListHomework]}
+          role="counselor"
+          onOpenThinkList={mockOnOpenThinkList}
+        />
+      );
+
+      const item = document.querySelector('.thinklist-item');
+      fireEvent.click(item);
+      expect(mockOnOpenThinkList).toHaveBeenCalledWith(thinkListHomework);
+    });
+
+    it('does NOT open edit form for think list homework', () => {
+      const mockOnOpenThinkList = vi.fn();
+      render(
+        <HomeworkTile
+          homework={[thinkListHomework]}
+          role="counselee"
+          onOpenThinkList={mockOnOpenThinkList}
+        />
+      );
+
+      const item = document.querySelector('.thinklist-item');
+      fireEvent.click(item);
+      expect(mockOnOpenThinkList).toHaveBeenCalled();
+      expect(screen.queryByText('Save')).not.toBeInTheDocument();
+    });
+  });
 });
