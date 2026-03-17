@@ -21,7 +21,7 @@ export default function PrayerRequestPage({ user, userProfile, editingPR = null,
       return expDate.toISOString().split('T')[0];
     }
     const d = new Date();
-    d.setMonth(d.getMonth() + 1);
+    d.setDate(d.getDate() + 7);
     return d.toISOString().split('T')[0];
   });
   const [formOutcome, setFormOutcome] = useState(editingPR?.outcome || '');
