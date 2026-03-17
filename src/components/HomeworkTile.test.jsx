@@ -448,4 +448,75 @@ describe('HomeworkTile', () => {
       expect(screen.getByText(/Changed from 7x\/week to 3x\/week/)).toBeInTheDocument();
     });
   });
+
+  describe('Journal Homework Navigation', () => {
+    const journalHomework = createHomework({
+      id: 'hw-journal-1',
+      title: 'Journal: Thankful Journal',
+      linkedJournalingId: 'journal-123',
+      type: 'journaling'
+    });
+
+    it('calls onOpenJournal when clicking journal homework (B-side)', () => {
+      const mockOnOpenJournal = vi.fn();
+      render(
+        <HomeworkTile
+          homework={[journalHomework]}
+          role="counselee"
+          onOpenJournal={mockOnOpenJournal}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Journal: Thankful Journal'));
+      expect(mockOnOpenJournal).toHaveBeenCalledWith(journalHomework);
+    });
+
+    it('calls onOpenJournal when clicking journal homework (A-side)', () => {
+      const mockOnOpenJournal = vi.fn();
+      render(
+        <HomeworkTile
+          homework={[journalHomework]}
+          role="counselor"
+          onOpenJournal={mockOnOpenJournal}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Journal: Thankful Journal'));
+      expect(mockOnOpenJournal).toHaveBeenCalledWith(journalHomework);
+    });
+
+    it('does NOT open edit form for journal homework', () => {
+      const mockOnOpenJournal = vi.fn();
+      const mockOnEdit = vi.fn();
+      render(
+        <HomeworkTile
+          homework={[journalHomework]}
+          role="counselee"
+          onOpenJournal={mockOnOpenJournal}
+          onEdit={mockOnEdit}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Journal: Thankful Journal'));
+      expect(mockOnOpenJournal).toHaveBeenCalled();
+      // Should NOT show edit form elements
+      expect(screen.queryByText('Save')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cancel Homework')).not.toBeInTheDocument();
+    });
+
+    it('still opens edit form for regular homework (not journal)', () => {
+      const regularHomework = createHomework({ id: 'hw-regular', title: 'Read Bible' });
+      render(
+        <HomeworkTile
+          homework={[regularHomework]}
+          role="counselee"
+          onEdit={mockOnEdit}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Read Bible'));
+      // Edit form should appear
+      expect(screen.getByText('Save')).toBeInTheDocument();
+    });
+  });
 });

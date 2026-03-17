@@ -372,13 +372,18 @@ export default function JournalingPage({
     }
   };
 
-  // Delete journal
+  // Delete journal (and cascade delete linked homework)
   const handleDelete = async () => {
     if (!currentJournalId || !basePath) return;
     if (!window.confirm('Delete this journal? This cannot be undone.')) return;
 
     try {
       const deletedTitle = title || 'Untitled Journal';
+      // Cascade delete linked homework
+      const linkedHwId = editingJournal?.linkedHomeworkId;
+      if (linkedHwId) {
+        await deleteDoc(doc(db, `${basePath}/homework`, linkedHwId));
+      }
       await deleteDoc(doc(db, `${basePath}/journals`, currentJournalId));
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'journal_deleted',

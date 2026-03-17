@@ -35,7 +35,8 @@ export default function HomeworkTile({
   sessionFilterOnly = false,
   onSessionFilterChange,
   completingId = null,
-  onOpenThinkList
+  onOpenThinkList,
+  onOpenJournal
 }) {
   const [homeworkTab, setHomeworkTab] = useState('current');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -496,10 +497,13 @@ export default function HomeworkTile({
 
                 if (isCounselor) {
                   const isThinkList = !!item.linkedThinkListId;
+                  const isJournal = !!item.linkedJournalingId;
+                  const isLinkedItem = isThinkList || isJournal;
+                  const handleLinkedClick = isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : isJournal && onOpenJournal ? () => onOpenJournal(item) : undefined;
                   return (
                     <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'thinklist-item' : ''}`}
-                      onClick={isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : undefined}
-                      style={isThinkList && onOpenThinkList ? { cursor: 'pointer' } : undefined}
+                      onClick={handleLinkedClick}
+                      style={handleLinkedClick ? { cursor: 'pointer' } : undefined}
                     >
                       {isThinkList ? (
                         <span className="thinklist-indicator">
@@ -521,7 +525,7 @@ export default function HomeworkTile({
                           {doneToday ? '✓' : isCompleting ? '...' : ''}
                         </button>
                       )}
-                      <a className="homework-status-title clickable" onClick={(e) => { if (isThinkList && onOpenThinkList) { e.stopPropagation(); onOpenThinkList(item); } else if (!isThinkList) startEdit(item); }}>
+                      <a className="homework-status-title clickable" onClick={(e) => { if (handleLinkedClick) { e.stopPropagation(); handleLinkedClick(); } else if (!isLinkedItem) startEdit(item); }}>
                         {item.title}
                       </a>
                       <span className="homework-status-progress">
@@ -541,10 +545,13 @@ export default function HomeworkTile({
 
                 // B-side: same compact layout as A-side, but with interactive check button
                 const isThinkList = !!item.linkedThinkListId;
+                const isJournal = !!item.linkedJournalingId;
+                const isLinkedItem = isThinkList || isJournal;
+                const handleLinkedClick = isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : isJournal && onOpenJournal ? () => onOpenJournal(item) : undefined;
                 return (
                   <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'thinklist-item' : ''}`}
-                    onClick={isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : undefined}
-                    style={isThinkList && onOpenThinkList ? { cursor: 'pointer' } : undefined}
+                    onClick={handleLinkedClick}
+                    style={handleLinkedClick ? { cursor: 'pointer' } : undefined}
                   >
                     {isThinkList ? (
                       <span className="thinklist-indicator">
@@ -566,7 +573,7 @@ export default function HomeworkTile({
                         {doneToday ? '✓' : isCompleting ? '...' : ''}
                       </button>
                     )}
-                    <a className="homework-status-title clickable" onClick={(e) => { if (isThinkList && onOpenThinkList) { e.stopPropagation(); onOpenThinkList(item); } else if (!isThinkList) startEdit(item); }}>
+                    <a className="homework-status-title clickable" onClick={(e) => { if (handleLinkedClick) { e.stopPropagation(); handleLinkedClick(); } else if (!isLinkedItem) startEdit(item); }}>
                       {item.title}
                     </a>
                     <span className="homework-status-progress">

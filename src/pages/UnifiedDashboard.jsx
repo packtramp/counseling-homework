@@ -932,7 +932,8 @@ export default function UnifiedDashboard() {
 
     const jnQuery = query(collection(db, `${basePath}/journals`), orderBy('createdAt', 'desc'));
     const unsubJn = onSnapshot(jnQuery, (snapshot) => {
-      setWatchedUserJournals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      // Filter out personal journals (timesPerWeek === 0) from AP view
+      setWatchedUserJournals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(j => j.timesPerWeek > 0));
     }, (error) => {
       console.error('Error loading watched user journals:', error);
       setWatchedUserJournals([]);
@@ -1077,6 +1078,22 @@ export default function UnifiedDashboard() {
     const linkedTL = counseleeThinkLists.find(tl => tl.id === homeworkItem.linkedThinkListId);
     if (linkedTL) {
       setViewingCounseleeThinkList(linkedTL);
+    }
+  };
+
+  const handleOpenJournalFromHomework = (homeworkItem) => {
+    if (!homeworkItem.linkedJournalingId) return;
+    const linkedJn = myJournals.find(j => j.id === homeworkItem.linkedJournalingId);
+    if (linkedJn) {
+      setViewingMyJournal(linkedJn);
+    }
+  };
+
+  const handleOpenCounseleeJournalFromHomework = (homeworkItem) => {
+    if (!homeworkItem.linkedJournalingId) return;
+    const linkedJn = counseleeJournals.find(j => j.id === homeworkItem.linkedJournalingId);
+    if (linkedJn) {
+      setViewingCounseleeJournal(linkedJn);
     }
   };
 
@@ -1912,6 +1929,7 @@ export default function UnifiedDashboard() {
                 onAdd={handleMyAddHomework}
                 completingId={completingId}
                 onOpenThinkList={handleOpenThinkListFromHomework}
+                onOpenJournal={handleOpenJournalFromHomework}
               />
             </div>
             <div className="session-notes-column">
@@ -2040,7 +2058,7 @@ export default function UnifiedDashboard() {
           </div>
           <div className="session-columns">
             <div className="session-homework-column">
-              <HomeworkTile homework={filteredHomework} role="counselor" showSessionFilter={true} sessionFilterOnly={sessionFilterOnly} onSessionFilterChange={setSessionFilterOnly} onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} onComplete={handleCounseleeCompleteHomework} completingId={completingId} />
+              <HomeworkTile homework={filteredHomework} role="counselor" showSessionFilter={true} sessionFilterOnly={sessionFilterOnly} onSessionFilterChange={setSessionFilterOnly} onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} onOpenJournal={handleOpenCounseleeJournalFromHomework} onComplete={handleCounseleeCompleteHomework} completingId={completingId} />
             </div>
             <div className="session-notes-column">
               <Tile title="Session Notes">
@@ -2146,7 +2164,7 @@ export default function UnifiedDashboard() {
           <FamilyLinkModal isOpen={showFamilyLinkModal} onClose={() => setShowFamilyLinkModal(false)} counselees={counselees} currentCounseleeId={selectedCounselee.id} onLink={handleLinkFamily} onAddCounselee={() => { setSelectedCounselee(null); setShowAddForm(true); }} />
           <div className="b-dashboard-grid">
             <div className="b-dashboard-left">
-              <HomeworkTile homework={counseleeHomework} role="counselor" onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} onComplete={handleCounseleeCompleteHomework} completingId={completingId} />
+              <HomeworkTile homework={counseleeHomework} role="counselor" onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} onOpenJournal={handleOpenCounseleeJournalFromHomework} onComplete={handleCounseleeCompleteHomework} completingId={completingId} />
               <Tile title={`Sessions (${counseleeSessions.length})`} action={<button className="add-btn" onClick={handleAddCounseleeSession}>+ Session</button>}>
                 {counseleeSessions.length === 0 ? (
                   <p className="empty-list">No sessions yet. Click "+ Session" to start.</p>
@@ -2659,6 +2677,7 @@ export default function UnifiedDashboard() {
                     onAdd={handleMyAddHomework}
                     completingId={completingId}
                     onOpenThinkList={handleOpenThinkListFromHomework}
+                    onOpenJournal={handleOpenJournalFromHomework}
                   />
                 )}
 
