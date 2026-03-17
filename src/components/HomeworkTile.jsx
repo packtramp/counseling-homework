@@ -501,7 +501,7 @@ export default function HomeworkTile({
                   const isLinkedItem = isThinkList || isJournal;
                   const handleLinkedClick = isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : isJournal && onOpenJournal ? () => onOpenJournal(item) : undefined;
                   return (
-                    <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'thinklist-item' : ''}`}
+                    <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'thinklist-item' : ''} ${isJournal ? 'journal-item' : ''}`}
                       onClick={handleLinkedClick}
                       style={handleLinkedClick ? { cursor: 'pointer' } : undefined}
                     >
@@ -514,6 +514,13 @@ export default function HomeworkTile({
                             <path d="M5 13.5 C7 14 9 13 11 13.5" fill="none" stroke="#333" strokeWidth="0.7"/>
                             <path d="M13 17 C13.5 15.5 13 14 13.5 13" fill="none" stroke="#333" strokeWidth="0.6"/>
                             <path d="M10.5 7v2H8v2h2.5v5h2v-5H15v-2h-2.5V7h-2z" fill="white"/>
+                          </svg>
+                        </span>
+                      ) : isJournal ? (
+                        <span className="journal-indicator">
+                          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#5B7BA5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                           </svg>
                         </span>
                       ) : (
@@ -549,7 +556,7 @@ export default function HomeworkTile({
                 const isLinkedItem = isThinkList || isJournal;
                 const handleLinkedClick = isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : isJournal && onOpenJournal ? () => onOpenJournal(item) : undefined;
                 return (
-                  <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'thinklist-item' : ''}`}
+                  <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'thinklist-item' : ''} ${isJournal ? 'journal-item' : ''}`}
                     onClick={handleLinkedClick}
                     style={handleLinkedClick ? { cursor: 'pointer' } : undefined}
                   >
@@ -562,6 +569,13 @@ export default function HomeworkTile({
                           <path d="M5 13.5 C7 14 9 13 11 13.5" fill="none" stroke="#333" strokeWidth="0.7"/>
                           <path d="M13 17 C13.5 15.5 13 14 13.5 13" fill="none" stroke="#333" strokeWidth="0.6"/>
                           <path d="M10.5 7v2H8v2h2.5v5h2v-5H15v-2h-2.5V7h-2z" fill="white"/>
+                        </svg>
+                      </span>
+                    ) : isJournal ? (
+                      <span className="journal-indicator">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#5B7BA5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 20h9"/>
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                         </svg>
                       </span>
                     ) : (

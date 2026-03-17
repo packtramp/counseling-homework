@@ -1093,6 +1093,18 @@ textarea {
   flex-shrink: 0;
 }
 
+.journal-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #5B7BA5;
+  background: #EBF0F7;
+  flex-shrink: 0;
+}
+
 .homework-status-item.thinklist-item {
   border-left: 3px solid var(--color-warning-dark);
   padding-left: 6px;
