@@ -33,11 +33,18 @@ vi.mock('firebase/firestore', () => ({
 const mockUser = { uid: 'user-123' };
 const mockUserProfile = { name: 'Test User', counselorId: 'counselor-456' };
 
+// Use dates far in the future so expiry filtering never removes test data
+const futureExpiry = () => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  return { toDate: () => d };
+};
+
 const makePR = (overrides = {}) => ({
   id: 'pr-1',
   text: 'Please pray for my health',
   createdAt: { toDate: () => new Date('2026-02-01') },
-  expiresAt: { toDate: () => new Date('2026-03-01') },
+  expiresAt: futureExpiry(),
   prayerCount: 3,
   ownerUid: 'user-123',
   ownerName: 'Test User',
@@ -49,7 +56,7 @@ const makeAPPR = (overrides = {}) => ({
   id: 'pr-ap-1',
   text: 'Pray for my job interview',
   createdAt: { toDate: () => new Date('2026-02-10') },
-  expiresAt: { toDate: () => new Date('2026-03-10') },
+  expiresAt: futureExpiry(),
   prayerCount: 1,
   ownerUid: 'ap-user-999',
   ownerName: 'John Smith',
@@ -61,7 +68,7 @@ const makeCounseleePR = (overrides = {}) => ({
   id: 'pr-counselee-1',
   text: 'Pray for my marriage',
   createdAt: { toDate: () => new Date('2026-02-15') },
-  expiresAt: { toDate: () => new Date('2026-03-15') },
+  expiresAt: futureExpiry(),
   prayerCount: 0,
   ownerUid: 'counselee-uid-1',
   ownerName: 'Jane Doe',

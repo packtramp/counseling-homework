@@ -135,16 +135,15 @@ describe('HomeworkTile', () => {
   });
 
   describe('Counselor View - Read Only Checkmark', () => {
-    it('shows green checkmark indicator (not button) for counselor', () => {
+    it('shows check button for counselor on Current tab', () => {
       const homework = [createHomework()];
       render(<HomeworkTile homework={homework} role="counselor" />);
 
-      const indicator = document.querySelector('.counselor-check-indicator');
-      expect(indicator).toBeInTheDocument();
-      expect(indicator).not.toHaveClass('checked');
+      const checkBtn = document.querySelector('.check-btn');
+      expect(checkBtn).toBeInTheDocument();
     });
 
-    it('shows checked indicator when completed today', () => {
+    it('shows checked indicator on Done tab when completed today', () => {
       const homework = [createHomework({ completions: [todayCompletion] })];
       render(<HomeworkTile homework={homework} role="counselor" />);
 
