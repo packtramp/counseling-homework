@@ -57,6 +57,9 @@ const BottomNav = React.memo(function BottomNav() {
   const handleNav = (item) => {
     if (location.pathname === item.path) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (item.isHome) {
+        window.dispatchEvent(new CustomEvent('dashboard-reset'));
+      }
     } else {
       navigate(item.path);
     }

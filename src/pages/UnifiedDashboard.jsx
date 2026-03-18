@@ -1012,6 +1012,31 @@ export default function UnifiedDashboard() {
       viewingMyHeartJournal, selectedMySession, viewingCounseleeJournal, showCounseleeActivityHistory,
       viewingCounseleeThinkList, viewingCounseleeHeartJournal, selectedCounseleeSession, selectedCounselee]);
 
+  // Home button resets all sub-views back to main dashboard
+  useEffect(() => {
+    const resetAll = () => {
+      setViewingWatchedJournal(null);
+      setShowWatchedActivityHistory(false);
+      setViewingWatchedThinkList(null);
+      setViewingWatchedHeartJournal(null);
+      setSelectedWatchedUser(null);
+      setViewingMyPrayerRequest(null);
+      setViewingMyJournal(null);
+      setShowMyActivityHistory(false);
+      setViewingMyThinkList(null);
+      setViewingMyHeartJournal(null);
+      setSelectedMySession(null);
+      setViewingCounseleeJournal(null);
+      setShowCounseleeActivityHistory(false);
+      setViewingCounseleeThinkList(null);
+      setViewingCounseleeHeartJournal(null);
+      setSelectedCounseleeSession(null);
+      setSelectedCounselee(null);
+    };
+    window.addEventListener('dashboard-reset', resetAll);
+    return () => window.removeEventListener('dashboard-reset', resetAll);
+  }, []);
+
   const viewState = useMemo(() => getViewState({
     viewingHeartJournal: viewingMyHeartJournal || viewingCounseleeHeartJournal || viewingWatchedHeartJournal,
     viewingThinkList: viewingMyThinkList || viewingCounseleeThinkList || viewingWatchedThinkList,
