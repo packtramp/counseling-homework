@@ -29,6 +29,18 @@ if (!admin.apps.length) {
 const db = admin.apps.length ? admin.firestore() : null;
 
 /**
+ * Normalize a date to Chicago midnight and count calendar days between two dates.
+ * Matches client-side homeworkHelpers.js toMidnight() + daysBetween() logic.
+ * Without this, homework assigned at 7pm creates week boundaries at 7pm server-side
+ * while client uses midnight boundaries — causing behind-status mismatches.
+ */
+const toChicagoMidnight = (d) => {
+  const s = d.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
+  return new Date(s);
+};
+const chicagoDaysBetween = (from, to) => Math.round((to - from) / (24 * 60 * 60 * 1000));
+
+/**
  * Send Reminders API
  * Called by external cron service (cron-job.org) every hour
  * Checks for counselees with reminders due and sends SMS/email
@@ -171,24 +183,26 @@ export default async function handler(req, res) {
       const hw = doc.data();
       const weeklyTarget = hw.weeklyTarget || 7;
       const dailyCap = hw.dailyCap || 999;
-      const assignedDate = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+      const rawAssigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+      const assignedDate = toChicagoMidnight(rawAssigned);
       const completions = hw.completions || [];
 
-      const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
-      const periodStart = new Date(assignedDate.getTime() + weeksSinceAssigned * msPerWeek);
-      const periodEnd = new Date(periodStart.getTime() + msPerWeek);
+      const totalDays = chicagoDaysBetween(assignedDate, todayChicago);
+      const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+      const dayOfWeek = totalDays % 7;
+      const periodStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + weeksSinceAssigned * 7);
+      const periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate() + 7);
 
-      const periodEndChicago = toChicagoDate(periodEnd);
-      const daysLeftIncludingToday = Math.max(1, Math.floor((periodEndChicago - todayChicago) / msPerDay));
+      const daysLeftIncludingToday = 7 - dayOfWeek;
 
       const dailyCounts = {};
       let completionsInPeriod = 0;
       let completionsOutsidePeriod = 0;
       for (const c of completions) {
         const cDate = c.date?.toDate ? c.date.toDate() : (c.toDate ? c.toDate() : new Date(c));
-        if (cDate >= periodStart && cDate <= now) {
+        const cChicago = toChicagoMidnight(cDate);
+        if (cChicago >= periodStart && cChicago <= todayChicago) {
           completionsInPeriod++;
-          const cChicago = toChicagoDate(cDate);
           const dayKey = cChicago.toDateString();
           dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
         } else {
@@ -299,20 +313,22 @@ export default async function handler(req, res) {
 
         const weeklyTarget = hw.weeklyTarget || 7;
         const dailyCap = hw.dailyCap || 999;
-        const assignedDate = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+        const rawAssigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+        const assignedDate = toChicagoMidnight(rawAssigned);
         const completions = hw.completions || [];
 
-        const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
-        const periodStart = new Date(assignedDate.getTime() + weeksSinceAssigned * msPerWeek);
-        const periodEnd = new Date(periodStart.getTime() + msPerWeek);
-        const periodEndChicago = toChicagoDate(periodEnd);
-        const daysLeftIncludingToday = Math.max(1, Math.floor((periodEndChicago - todayChicago) / msPerDay));
+        const totalDays = chicagoDaysBetween(assignedDate, todayChicago);
+        const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+        const dayOfWeek = totalDays % 7;
+        const periodStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + weeksSinceAssigned * 7);
+        const daysLeftIncludingToday = 7 - dayOfWeek;
 
         const dailyCounts = {};
         for (const c of completions) {
           const cDate = c.date?.toDate ? c.date.toDate() : (c.toDate ? c.toDate() : new Date(c));
-          if (cDate >= periodStart && cDate <= now) {
-            const dayKey = toChicagoDate(cDate).toDateString();
+          const cChicago = toChicagoMidnight(cDate);
+          if (cChicago >= periodStart && cChicago <= todayChicago) {
+            const dayKey = cChicago.toDateString();
             dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
           }
         }
@@ -595,25 +611,26 @@ export default async function handler(req, res) {
 
           const weeklyTarget = hw.weeklyTarget || 7;
           const dailyCap = hw.dailyCap || 999;  // Default to no cap
-          const assignedDate = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+          const rawAssigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+          const assignedDate = toChicagoMidnight(rawAssigned);
           const completions = hw.completions || [];
 
-          // Exact-timestamp periods (matches client-side HomeworkTile.jsx)
-          // Period starts exactly N*7 days from assignment time, not midnight
-          const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
-          const periodStart = new Date(assignedDate.getTime() + weeksSinceAssigned * msPerWeek);
-          const periodEnd = new Date(periodStart.getTime() + msPerWeek);
+          // Midnight-normalized periods (matches client-side homeworkHelpers.js)
+          const totalDays = chicagoDaysBetween(assignedDate, todayChicago);
+          const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+          const dayOfWeek = totalDays % 7;
+          const periodStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + weeksSinceAssigned * 7);
+          const periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate() + 7);
 
-          // Calendar days remaining INCLUDING today (Chicago time) for behind calc
-          const periodEndChicago = toChicagoDate(periodEnd);
-          const daysLeftIncludingToday = Math.max(1, Math.floor((periodEndChicago - todayChicago) / msPerDay));
+          // Calendar days remaining INCLUDING today
+          const daysLeftIncludingToday = 7 - dayOfWeek;
 
-          // Count completions in this exact period (daily cap by Chicago day)
+          // Count completions in this period (daily cap by Chicago day)
           const dailyCounts = {};
           for (const c of completions) {
             const cDate = c.date?.toDate ? c.date.toDate() : (c.toDate ? c.toDate() : new Date(c));
-            if (cDate >= periodStart && cDate <= now) {
-              const cChicago = toChicagoDate(cDate);
+            const cChicago = toChicagoMidnight(cDate);
+            if (cChicago >= periodStart && cChicago <= todayChicago) {
               const dayKey = cChicago.toDateString();
               dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
             }
@@ -829,28 +846,27 @@ export default async function handler(req, res) {
 
             const weeklyTarget = hw.weeklyTarget || 7;
             const dailyCap = hw.dailyCap || 999;
-            const assignedDate = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+            const rawAssigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+            const assignedDate = toChicagoMidnight(rawAssigned);
             const completions = hw.completions || [];
 
-            // Exact-timestamp periods (matches client-side HomeworkTile.jsx)
-            const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / smsMsPerWeek));
-            const periodStart = new Date(assignedDate.getTime() + weeksSinceAssigned * smsMsPerWeek);
-            const periodEnd = new Date(periodStart.getTime() + smsMsPerWeek);
-            const periodEndChicago = toChicagoDate(periodEnd);
-            // Include today in remaining days (matches client-side isItemBehind)
-            const daysLeftIncludingToday = Math.max(1, Math.floor((periodEndChicago - todayChicago) / smsMsPerDay));
+            // Midnight-normalized periods (matches client-side homeworkHelpers.js)
+            const totalDays = chicagoDaysBetween(assignedDate, todayChicago);
+            const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+            const dayOfWeek = totalDays % 7;
+            const periodStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + weeksSinceAssigned * 7);
+            const daysLeftIncludingToday = 7 - dayOfWeek;
 
             const dailyCounts = {};
             let completedToday = false;
             for (const comp of completions) {
               const cDate = comp.date?.toDate ? comp.date.toDate() : (comp.toDate ? comp.toDate() : new Date(comp));
-              if (cDate >= periodStart && cDate <= now) {
-                const cChicago = toChicagoDate(cDate);
+              const cChicago = toChicagoMidnight(cDate);
+              if (cChicago >= periodStart && cChicago <= todayChicago) {
                 const dayKey2 = cChicago.toDateString();
                 dailyCounts[dayKey2] = (dailyCounts[dayKey2] || 0) + 1;
               }
-              const cChicago2 = toChicagoDate(cDate);
-              if (cChicago2.toDateString() === todayKey) {
+              if (cChicago.toDateString() === todayKey) {
                 completedToday = true;
               }
             }
@@ -1007,29 +1023,28 @@ export default async function handler(req, res) {
 
             const weeklyTarget = hw.weeklyTarget || 7;
             const dailyCap = hw.dailyCap || 999;
-            const assignedDate = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+            const rawAssigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+            const assignedDate = toChicagoMidnight(rawAssigned);
             const completions = hw.completions || [];
 
-            // Exact-timestamp periods (matches client-side HomeworkTile.jsx)
-            const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / apMsPerWeek));
-            const periodStart = new Date(assignedDate.getTime() + weeksSinceAssigned * apMsPerWeek);
-            const periodEnd = new Date(periodStart.getTime() + apMsPerWeek);
-            const periodEndChicago = toChicagoDateAP(periodEnd);
-            // Include today in remaining days (email fires at midnight, full day still ahead)
-            const daysLeftIncludingToday = Math.max(1, Math.floor((periodEndChicago - todayChicagoAP) / apMsPerDay));
+            // Midnight-normalized periods (matches client-side homeworkHelpers.js)
+            const totalDays = chicagoDaysBetween(assignedDate, yesterdayChicagoAP);
+            const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+            const dayOfWeek = totalDays % 7;
+            const periodStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + weeksSinceAssigned * 7);
+            const daysLeftIncludingToday = 7 - dayOfWeek;
 
-            // Count completions in this exact period (daily cap by Chicago day)
+            // Count completions in this period (daily cap by Chicago day)
             const dailyCounts = {};
             let completedToday = false;
             for (const comp of completions) {
               const cDate = comp.date?.toDate ? comp.date.toDate() : (comp.toDate ? comp.toDate() : new Date(comp));
-              if (cDate >= periodStart && cDate <= now) {
-                const cChicago = toChicagoDateAP(cDate);
+              const cChicago = toChicagoMidnight(cDate);
+              if (cChicago >= periodStart && cChicago <= yesterdayChicagoAP) {
                 const dayKey = cChicago.toDateString();
                 dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
               }
-              const cChicago2 = toChicagoDateAP(cDate);
-              if (cChicago2.toDateString() === todayKeyAP) {
+              if (cChicago.toDateString() === todayKeyAP) {
                 completedToday = true;
               }
             }
