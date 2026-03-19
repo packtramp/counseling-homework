@@ -2316,6 +2316,7 @@ export default function UnifiedDashboard() {
           {renderToast()}
           {renderEncouragementDetailModal()}
           <OnboardingModal
+            dataLoaded={!!myData}
             step={myData?.onboardingStep}
             lastSeen={myData?.onboardingLastSeen}
             onDismiss={(stepIndex) => {
@@ -2482,6 +2483,7 @@ export default function UnifiedDashboard() {
           {renderToast()}
           {renderEncouragementDetailModal()}
           <OnboardingModal
+            dataLoaded={!!myData}
             step={myData?.onboardingStep}
             lastSeen={myData?.onboardingLastSeen}
             onDismiss={(stepIndex) => {
@@ -2877,6 +2879,7 @@ export default function UnifiedDashboard() {
       {renderToast()}
       {renderEncouragementDetailModal()}
       <OnboardingModal
+        dataLoaded={!!myData}
         step={myData?.onboardingStep}
         lastSeen={myData?.onboardingLastSeen}
         onDismiss={(stepIndex) => {

@@ -134,7 +134,9 @@ export const getNextOnboardingMessage = (step, lastSeen, now = new Date()) => {
 // Export for testing
 export const MESSAGE_COUNT = ONBOARDING_MESSAGES.length;
 
-export default function OnboardingModal({ step, lastSeen, onDismiss }) {
+export default function OnboardingModal({ step, lastSeen, onDismiss, dataLoaded = true }) {
+  // Don't render until user data has loaded to prevent flash
+  if (!dataLoaded) return null;
   const result = getNextOnboardingMessage(step, lastSeen);
   if (!result) return null;
 
