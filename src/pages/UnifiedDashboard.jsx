@@ -2148,28 +2148,25 @@ export default function UnifiedDashboard() {
           <div className="session-date-row">
             <label>Session:</label>
             <input type="datetime-local" value={getSessionDateTimeValue()} onChange={(e) => handleDateChange(e.target.value)} className="session-date-input" />
-            {selectedCounseleeSession.isJoint && <span className="joint-badge" style={{ marginLeft: 8 }}>Joint</span>}
-            <button className="delete-session-btn" onClick={handleDeleteCounseleeSession} title="Delete this session">Delete Session</button>
-          </div>
-          <div className="session-date-row">
-            <label>Duration:</label>
             <select
               className="session-duration-select"
               value={selectedCounseleeSession.duration || ''}
               onChange={(e) => handleDurationChange(e.target.value)}
             >
               <option value="">—</option>
-              <option value="30">30 min</option>
-              <option value="45">45 min</option>
-              <option value="60">1 hr</option>
-              <option value="75">1 hr 15 min</option>
-              <option value="90">1 hr 30 min</option>
-              <option value="105">1 hr 45 min</option>
-              <option value="120">2 hr</option>
-              <option value="150">2 hr 30 min</option>
-              <option value="180">3 hr</option>
+              <option value="30">30m</option>
+              <option value="45">45m</option>
+              <option value="60">1h</option>
+              <option value="75">1h15</option>
+              <option value="90">1h30</option>
+              <option value="105">1h45</option>
+              <option value="120">2h</option>
+              <option value="150">2h30</option>
+              <option value="180">3h</option>
             </select>
             {dateSaveStatus && <span className={`save-status ${dateSaveStatus}`}>{dateSaveStatus === 'saving' ? 'Saving...' : '✓ Saved'}</span>}
+            {selectedCounseleeSession.isJoint && <span className="joint-badge">Joint</span>}
+            <button className="delete-session-btn" onClick={handleDeleteCounseleeSession} title="Delete this session">Delete Session</button>
           </div>
           <div className="session-columns">
             <div className="session-homework-column">
