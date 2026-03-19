@@ -124,6 +124,15 @@ export default function ThinkListPage({
   // Find linked homework for this think list (for Mark Reviewed button)
   const linkedHw = homework.find(h => h.linkedThinkListId === editingThinkList?.id && h.status === 'active');
 
+  // Auto-heal: fix dailyCap if it doesn't match timesPerDay (one-time migration for pre-fix data)
+  useEffect(() => {
+    if (!linkedHw || !editingThinkList || !basePath) return;
+    const expectedCap = editingThinkList.timesPerDay ?? 1;
+    if (expectedCap > 0 && linkedHw.dailyCap !== expectedCap) {
+      updateDoc(doc(db, `${basePath}/homework`, linkedHw.id), { dailyCap: expectedCap });
+    }
+  }, [linkedHw?.id, linkedHw?.dailyCap, editingThinkList?.timesPerDay, basePath]);
+
   // Client-side backup cooldown (in case Firestore data hasn't synced yet)
   const [lastReviewedAt, setLastReviewedAt] = useState(null);
 
