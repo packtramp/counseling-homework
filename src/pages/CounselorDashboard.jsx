@@ -19,6 +19,7 @@ import JournalingTile from '../components/JournalingTile';
 import JournalingPage from '../components/JournalingPage';
 import { isItemBehind, formatPhone } from '../utils/homeworkHelpers';
 import { downloadCounseleeData } from '../utils/generatePDF';
+import { getLinkedSpouse as getLinkedSpouseUtil } from '../utils/jointSession';
 
 // Helper to read/write URL params for state persistence
 const getUrlParams = () => new URLSearchParams(window.location.search);
@@ -380,18 +381,39 @@ export default function CounselorDashboard() {
     }
   };
 
-  const handleAddSession = async () => {
+  // Helper: find linked spouse for current counselee (uses shared util)
+  const getLinkedSpouse = (counseleeId) => getLinkedSpouseUtil(counseleeId, counselees);
+
+  const handleAddSession = async (isJoint = false) => {
+    const sessionData = {
+      date: serverTimestamp(),
+      notes: '',
+      homeworkAssigned: [],
+      createdAt: serverTimestamp()
+    };
+
     const sessionRef = await addDoc(
       collection(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`),
-      {
-        date: serverTimestamp(),
-        notes: '',
-        homeworkAssigned: [],
-        createdAt: serverTimestamp()
-      }
+      sessionData
     );
-    // Navigate to the new session
-    setSelectedSession({ id: sessionRef.id, date: new Date(), notes: '', homeworkAssigned: [] });
+
+    // If joint session, create mirror under spouse
+    if (isJoint) {
+      const spouse = getLinkedSpouse(selectedCounselee.id);
+      if (spouse) {
+        const spouseSessionRef = await addDoc(
+          collection(db, `counselors/${user.uid}/counselees/${spouse.id}/sessions`),
+          { ...sessionData, isJoint: true, linkedSessionId: sessionRef.id, linkedCounseleeId: selectedCounselee.id }
+        );
+        await updateDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, sessionRef.id), {
+          isJoint: true,
+          linkedSessionId: spouseSessionRef.id,
+          linkedCounseleeId: spouse.id
+        });
+      }
+    }
+
+    setSelectedSession({ id: sessionRef.id, date: new Date(), notes: '', homeworkAssigned: [], isJoint: isJoint || false });
   };
 
   // Callback for HomeworkTile onAdd
@@ -686,12 +708,22 @@ export default function CounselorDashboard() {
 
   const handleNotesChange = async (newNotes) => {
     setSessionNotes(newNotes);
-    // Auto-save after typing stops (debounced in a real app, but simple for now)
     if (selectedSession) {
       await updateDoc(
         doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, selectedSession.id),
         { notes: newNotes }
       );
+      // Sync to linked spouse session if joint
+      if (selectedSession.isJoint && selectedSession.linkedSessionId) {
+        try {
+          await updateDoc(
+            doc(db, `counselors/${user.uid}/counselees/${selectedSession.linkedCounseleeId}/sessions`, selectedSession.linkedSessionId),
+            { notes: newNotes }
+          );
+        } catch (e) {
+          console.error('Failed to sync notes to spouse session:', e);
+        }
+      }
     }
   };
 
@@ -717,13 +749,23 @@ export default function CounselorDashboard() {
 
     const handleDateChange = async (newDate) => {
       const newDateObj = new Date(newDate);
-      // Update local state FIRST for immediate UI feedback
       setSelectedSession(prev => ({ ...prev, date: newDateObj }));
       setDateSaveStatus('saving');
       await updateDoc(
         doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, selectedSession.id),
         { date: newDateObj }
       );
+      // Sync date to linked spouse session if joint
+      if (selectedSession.isJoint && selectedSession.linkedSessionId) {
+        try {
+          await updateDoc(
+            doc(db, `counselors/${user.uid}/counselees/${selectedSession.linkedCounseleeId}/sessions`, selectedSession.linkedSessionId),
+            { date: newDateObj }
+          );
+        } catch (e) {
+          console.error('Failed to sync date to spouse session:', e);
+        }
+      }
       setDateSaveStatus('saved');
       setTimeout(() => setDateSaveStatus(null), 2000);
     };
@@ -968,7 +1010,16 @@ export default function CounselorDashboard() {
 
               <Tile
                 title={`Sessions (${sessions.length})`}
-                action={<button className="add-btn" onClick={handleAddSession}>+ Session</button>}
+                action={
+                  getLinkedSpouse(selectedCounselee.id) ? (
+                    <span className="session-add-group">
+                      <button className="add-btn" onClick={() => handleAddSession(true)}>+ Joint Session</button>
+                      <button className="add-btn add-btn-secondary" onClick={() => handleAddSession(false)}>+ Solo</button>
+                    </span>
+                  ) : (
+                    <button className="add-btn" onClick={() => handleAddSession(false)}>+ Session</button>
+                  )
+                }
               >
                 {sessions.length === 0 ? (
                   <p className="empty-list">No sessions yet. Click "+ Session" to start.</p>
@@ -980,7 +1031,10 @@ export default function CounselorDashboard() {
                         className="session-item"
                         onClick={() => selectSession(session)}
                       >
-                        <span className="session-date">{formatDate(session.date)}</span>
+                        <span className="session-date">
+                          {formatDate(session.date)}
+                          {session.isJoint && <span className="joint-badge" title="Joint session with spouse">Joint</span>}
+                        </span>
                         <span className="session-meta">
                           {homework.filter(h => h.sessionId === session.id).length} homework
                         </span>

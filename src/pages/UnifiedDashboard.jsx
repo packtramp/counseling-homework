@@ -22,6 +22,7 @@ import AccountabilityModal from '../components/AccountabilityModal';
 import AccountabilityPartnersTile from '../components/AccountabilityPartnersTile';
 import AccountabilityPartnersModal from '../components/AccountabilityPartnersModal';
 import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateWeekStreak, isOnVacation } from '../utils/homeworkHelpers';
+import { getLinkedSpouse as getLinkedSpouseUtil } from '../utils/jointSession';
 import VacationBanner from '../components/VacationBanner';
 import OnboardingModal from '../components/OnboardingModal';
 import PrayerRequestsTile from '../components/PrayerRequestsTile';
@@ -1564,25 +1565,60 @@ export default function UnifiedDashboard() {
     setSelectedCounselee(prev => ({ ...prev, email, uid: data.uid, emailReminders: true }));
   };
 
-  const handleAddCounseleeSession = async () => {
+  const getLinkedSpouse = (counseleeId) => getLinkedSpouseUtil(counseleeId, counselees);
+
+  const handleAddCounseleeSession = async (isJoint = false) => {
     // Use session template if available
     const templateNotes = myProfile?.sessionTemplate || '';
+    const sessionData = {
+      date: serverTimestamp(),
+      notes: templateNotes,
+      homeworkAssigned: [],
+      createdAt: serverTimestamp()
+    };
+
     const sessionRef = await addDoc(
       collection(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`),
-      {
-        date: serverTimestamp(),
-        notes: templateNotes,
-        homeworkAssigned: [],
-        createdAt: serverTimestamp()
-      }
+      sessionData
     );
-    setSelectedCounseleeSession({ id: sessionRef.id, date: new Date(), notes: templateNotes, homeworkAssigned: [] });
+
+    // If joint session, create mirror under spouse
+    if (isJoint) {
+      const spouse = getLinkedSpouse(selectedCounselee.id);
+      if (spouse) {
+        const spouseSessionRef = await addDoc(
+          collection(db, `counselors/${user.uid}/counselees/${spouse.id}/sessions`),
+          { ...sessionData, isJoint: true, linkedSessionId: sessionRef.id, linkedCounseleeId: selectedCounselee.id }
+        );
+        // Update original with link back
+        await updateDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, sessionRef.id), {
+          isJoint: true,
+          linkedSessionId: spouseSessionRef.id,
+          linkedCounseleeId: spouse.id
+        });
+      }
+    }
+
+    setSelectedCounseleeSession({ id: sessionRef.id, date: new Date(), notes: templateNotes, homeworkAssigned: [], isJoint: isJoint || false });
     setCounseleeSessionNotes(templateNotes);
   };
 
   const handleDeleteCounseleeSession = async () => {
     if (!selectedCounseleeSession || !selectedCounselee) return;
-    if (!window.confirm('Delete this session? This cannot be undone.')) return;
+    const isJoint = selectedCounseleeSession.isJoint && selectedCounseleeSession.linkedSessionId;
+    const msg = isJoint
+      ? 'Delete this joint session? It will be removed from both spouses. This cannot be undone.'
+      : 'Delete this session? This cannot be undone.';
+    if (!window.confirm(msg)) return;
+
+    // Delete the linked spouse session first if joint
+    if (isJoint) {
+      try {
+        await deleteDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounseleeSession.linkedCounseleeId}/sessions`, selectedCounseleeSession.linkedSessionId));
+      } catch (e) {
+        console.error('Failed to delete linked session:', e);
+      }
+    }
 
     await deleteDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, selectedCounseleeSession.id));
     setSelectedCounseleeSession(null);
@@ -1804,6 +1840,17 @@ export default function UnifiedDashboard() {
         doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, selectedCounseleeSession.id),
         { notes: newNotes }
       );
+      // Sync to linked spouse session if joint
+      if (selectedCounseleeSession.isJoint && selectedCounseleeSession.linkedSessionId) {
+        try {
+          await updateDoc(
+            doc(db, `counselors/${user.uid}/counselees/${selectedCounseleeSession.linkedCounseleeId}/sessions`, selectedCounseleeSession.linkedSessionId),
+            { notes: newNotes }
+          );
+        } catch (e) {
+          console.error('Failed to sync notes to spouse session:', e);
+        }
+      }
     }
   };
 
@@ -2052,6 +2099,17 @@ export default function UnifiedDashboard() {
         doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, selectedCounseleeSession.id),
         { date: newDateObj }
       );
+      // Sync date to linked spouse session if joint
+      if (selectedCounseleeSession.isJoint && selectedCounseleeSession.linkedSessionId) {
+        try {
+          await updateDoc(
+            doc(db, `counselors/${user.uid}/counselees/${selectedCounseleeSession.linkedCounseleeId}/sessions`, selectedCounseleeSession.linkedSessionId),
+            { date: newDateObj }
+          );
+        } catch (e) {
+          console.error('Failed to sync date to spouse session:', e);
+        }
+      }
       setDateSaveStatus('saved');
       setTimeout(() => setDateSaveStatus(null), 2000);
     };
@@ -2062,7 +2120,13 @@ export default function UnifiedDashboard() {
           <button className="back-btn" onClick={() => setSelectedCounseleeSession(null)}>&larr; Back</button>
           <div className="session-nav">
             <button className="nav-arrow" onClick={() => navigateCounseleeSession('newer')} disabled={!hasNewerCounseleeSession} title="Newer session">&larr;</button>
-            <span className="session-nav-label">{selectedCounselee.name}</span>
+            <span className="session-nav-label">
+              {selectedCounselee.name}
+              {selectedCounseleeSession.isJoint && (() => {
+                const spouse = counselees.find(c => c.id === selectedCounseleeSession.linkedCounseleeId);
+                return <span className="joint-session-label"> &amp; {spouse?.name || 'Spouse'}</span>;
+              })()}
+            </span>
             <button className="nav-arrow" onClick={() => navigateCounseleeSession('older')} disabled={!hasOlderCounseleeSession} title="Older session">&rarr;</button>
           </div>
           <div className="header-actions">
@@ -2079,6 +2143,7 @@ export default function UnifiedDashboard() {
             <label>Session:</label>
             <input type="datetime-local" value={getSessionDateTimeValue()} onChange={(e) => handleDateChange(e.target.value)} className="session-date-input" />
             {dateSaveStatus && <span className={`save-status ${dateSaveStatus}`}>{dateSaveStatus === 'saving' ? 'Saving...' : '✓ Saved'}</span>}
+            {selectedCounseleeSession.isJoint && <span className="joint-badge" style={{ marginLeft: 8 }}>Joint</span>}
             <button className="delete-session-btn" onClick={handleDeleteCounseleeSession} title="Delete this session">Delete Session</button>
           </div>
           <div className="session-columns">
@@ -2190,14 +2255,26 @@ export default function UnifiedDashboard() {
           <div className="b-dashboard-grid">
             <div className="b-dashboard-left">
               <HomeworkTile homework={counseleeHomework} role="counselor" onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} onOpenJournal={handleOpenCounseleeJournalFromHomework} onComplete={handleCounseleeCompleteHomework} completingId={completingId} />
-              <Tile title={`Sessions (${counseleeSessions.length})`} action={<button className="add-btn" onClick={handleAddCounseleeSession}>+ Session</button>}>
+              <Tile title={`Sessions (${counseleeSessions.length})`} action={
+                getLinkedSpouse(selectedCounselee.id) ? (
+                  <span className="session-add-group">
+                    <button className="add-btn" onClick={() => handleAddCounseleeSession(true)}>+ Joint Session</button>
+                    <button className="add-btn add-btn-secondary" onClick={() => handleAddCounseleeSession(false)}>+ Solo</button>
+                  </span>
+                ) : (
+                  <button className="add-btn" onClick={() => handleAddCounseleeSession(false)}>+ Session</button>
+                )
+              }>
                 {counseleeSessions.length === 0 ? (
                   <p className="empty-list">No sessions yet. Click "+ Session" to start.</p>
                 ) : (
                   <ul className="session-list">
                     {counseleeSessions.map(session => (
                       <li key={session.id} className="session-item" onClick={() => { setSelectedCounseleeSession(session); setCounseleeSessionNotes(session.notes || ''); }}>
-                        <span className="session-date">{formatDate(session.date)}</span>
+                        <span className="session-date">
+                          {formatDate(session.date)}
+                          {session.isJoint && <span className="joint-badge" title="Joint session with spouse">Joint</span>}
+                        </span>
                         <span className="session-meta">{counseleeHomework.filter(h => h.sessionId === session.id).length} homework</span>
                       </li>
                     ))}
