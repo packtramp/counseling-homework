@@ -1978,14 +1978,6 @@ export default function UnifiedDashboard() {
             <span className="session-nav-label">{formatDate(selectedMySession.date)}</span>
             <button className="nav-arrow" onClick={() => navigateMySession('older')} disabled={!hasOlder} title="Older session">&rarr;</button>
           </div>
-          <div className="header-actions">
-            <button className="account-btn" onClick={() => navigate('/settings')} title="Account Settings">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-              </svg>
-            </button>
-            <button onClick={logout}>Sign Out</button>
-          </div>
         </header>
         <main>
           <div className="session-columns">
@@ -2129,14 +2121,6 @@ export default function UnifiedDashboard() {
             </span>
             <button className="nav-arrow" onClick={() => navigateCounseleeSession('older')} disabled={!hasOlderCounseleeSession} title="Older session">&rarr;</button>
           </div>
-          <div className="header-actions">
-            <button className="account-btn" onClick={() => navigate('/settings')} title="Account Settings">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-              </svg>
-            </button>
-            <button onClick={logout}>Sign Out</button>
-          </div>
         </header>
         <main>
           <div className="session-date-row">
@@ -2168,14 +2152,6 @@ export default function UnifiedDashboard() {
         <header>
           <button className="back-btn" onClick={() => setSelectedCounselee(null)}>&larr; Back</button>
           <h1>{selectedCounselee.name}</h1>
-          <div className="header-actions">
-            <button className="account-btn" onClick={() => navigate('/settings')} title="Account Settings">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-              </svg>
-            </button>
-            <button onClick={logout}>Sign Out</button>
-          </div>
         </header>
         <main>
           <div className="a-contact-info-row">
@@ -2377,9 +2353,6 @@ export default function UnifiedDashboard() {
         <header>
           <button className="back-btn" onClick={() => setSelectedWatchedUser(null)}>&larr; Back</button>
           <h1>{selectedWatchedUser.name}</h1>
-          <div className="header-actions">
-            <button onClick={logout}>Sign Out</button>
-          </div>
         </header>
         <main>
           <div className="accountability-view-header">
