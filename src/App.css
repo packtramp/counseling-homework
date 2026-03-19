@@ -4310,7 +4310,6 @@ button.counselor-check-indicator.clickable-check:active {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-left: auto;
   flex-wrap: wrap;
 }
 
@@ -5037,6 +5036,42 @@ button.counselor-check-indicator.clickable-check:active {
 .connected-subheader .tab-btn {
   font-size: 0.7rem;
   padding: 0.15rem 0.5rem;
+}
+
+.connected-subheader-clickable {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.connected-subheader-clickable:hover {
+  color: var(--color-primary);
+}
+
+.slim-add-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.slim-add-btn:hover {
+  background: var(--color-gray-100);
+  border-color: var(--color-primary);
+}
+
+.empty-state-slim {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin: 0.25rem 0 0.5rem;
+  padding: 0;
 }
 
 /* Accountability Partners Modal */
@@ -8085,6 +8120,12 @@ button.counselor-check-indicator.clickable-check:active {
   cursor: pointer;
   padding: 0;
   transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+/* When in greeting row, push to right */
+.greeting-row > .activity-icon-btn {
+  margin-left: auto;
 }
 
 .activity-icon-btn:hover {

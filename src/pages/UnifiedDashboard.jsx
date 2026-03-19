@@ -2569,6 +2569,11 @@ export default function UnifiedDashboard() {
                   🙏 {myPrayerCount}
                 </span>
               )}
+              <button className="activity-icon-btn" onClick={() => setShowMyActivityHistory(true)} title="Activity History">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                  <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+                </svg>
+              </button>
               <div className="greeting-row-right">
                 {myCounselorProfile && (
                   <div className="b-person-tile counselor-tile">
@@ -2584,28 +2589,13 @@ export default function UnifiedDashboard() {
                     </div>
                   </div>
                 )}
-                <div className="connected-accounts-tile">
-                  <span className="ap-tile-title">Connected Accounts</span>
-                  <span className="ap-tile-count">{myAccountabilityPartners.length + counselees.length}</span>
-                  <div className="connected-add-wrapper">
-                    <button className="connected-add-btn" onClick={() => setShowAddMenu(!showAddMenu)}>+</button>
-                    {showAddMenu && (
-                      <>
-                        <div className="connected-add-overlay" onClick={() => setShowAddMenu(false)} />
-                        <div className="connected-add-menu">
-                          <button onClick={() => { setShowAddMenu(false); setShowAddForm(true); }}>+ Counselee</button>
-                          <button onClick={() => { setShowAddMenu(false); setShowAccountabilityPartnersModal(true); }}>+ Accountability Partner</button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <button className="activity-icon-btn" onClick={() => setShowMyActivityHistory(true)} title="Activity History">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-                    <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
-                  </svg>
-                </button>
               </div>
+            </div>
+
+            {/* Accountability Partners section (above counselees) */}
+            <div className="connected-subheader">
+              <span className="connected-subheader-clickable" onClick={() => setShowAccountabilityPartnersModal(true)}>ACCOUNTABILITY PARTNERS</span>
+              <button className="slim-add-btn" onClick={() => setShowAccountabilityPartnersModal(true)}>+ AP</button>
             </div>
 
             {/* Pending AP Invite Tiles */}
@@ -2663,7 +2653,65 @@ export default function UnifiedDashboard() {
               </div>
             )}
 
-            {/* Add Counselee form (shown when triggered from Connected Accounts menu) */}
+            {/* AP Tiles - People I'm watching */}
+            {myWatchingUsers.length > 0 && (
+              <div className="accountability-tiles-row">
+                {myWatchingUsers.map(person => {
+                  const statusData = watchingUsersStatus[person.uid] || {};
+                  const status = statusData.status || 'unknown';
+                  const streak = statusData.streak || 0;
+                  const photoUrl = statusData.photoUrl || null;
+                  return (
+                    <div
+                      key={person.uid}
+                      className={`accountability-tile status-${status}`}
+                      onClick={() => setSelectedWatchedUser(person)}
+                    >
+                      <div className="accountability-tile-top">
+                        <ProfilePhoto photoUrl={photoUrl} size="small" />
+                        <div className="accountability-tile-info">
+                          <div className="accountability-tile-name">{person.name}</div>
+                          <div className="accountability-tile-email">{person.email}</div>
+                          <div className="accountability-tile-meta">
+                            <span className="accountability-tile-status">
+                              {getAPStatusLabel(status)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="streak-circle-container">
+                          <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
+                            {streak}
+                          </div>
+                          <div className="streak-label">day streak</div>
+                        </div>
+                      </div>
+                      {renderEncourageBar(person.uid)}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {myWatchingUsers.length === 0 && pendingRequests.length === 0 && (
+              <p className="empty-state-slim">No accountability partners yet.</p>
+            )}
+
+            {/* Counselees section */}
+            <div className="connected-subheader">
+              COUNSELEES
+              {counselees.length > 0 && (
+                <div className="counselee-tabs">
+                  <button className={`tab-btn ${counseleeTab === 'active' ? 'active' : ''}`} onClick={() => setCounseleeTab('active')}>
+                    Active ({counselees.filter(c => !c.graduated).length})
+                  </button>
+                  <button className={`tab-btn ${counseleeTab === 'graduated' ? 'active' : ''}`} onClick={() => setCounseleeTab('graduated')}>
+                    Graduated ({counselees.filter(c => c.graduated).length})
+                  </button>
+                </div>
+              )}
+              <button className="slim-add-btn" onClick={() => setShowAddForm(true)}>+ Counselee</button>
+            </div>
+
             {showAddForm && (
               <form className="add-form" onSubmit={handleAddCounselee}>
                 <input type="text" placeholder="Name" value={newCounselee.name} onChange={(e) => setNewCounselee({ ...newCounselee, name: e.target.value })} required />
@@ -2680,86 +2728,28 @@ export default function UnifiedDashboard() {
               </form>
             )}
 
-            {/* Counselees section */}
-            {counselees.length > 0 && (
-              <>
-                <div className="connected-subheader">
-                  COUNSELEES
-                  <div className="counselee-tabs">
-                    <button className={`tab-btn ${counseleeTab === 'active' ? 'active' : ''}`} onClick={() => setCounseleeTab('active')}>
-                      Active ({counselees.filter(c => !c.graduated).length})
-                    </button>
-                    <button className={`tab-btn ${counseleeTab === 'graduated' ? 'active' : ''}`} onClick={() => setCounseleeTab('graduated')}>
-                      Graduated ({counselees.filter(c => c.graduated).length})
-                    </button>
-                  </div>
-                </div>
-                <div className="accountability-tiles-row">
-                  {counselees
-                    .filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated)
-                    .map(counselee => {
-                      const behindCount = counseleeBehindStatus[counselee.id] || 0;
-                      const status = !counselee.uid ? 'no-login' : counselee.graduated ? 'graduated' : behindCount > 0 ? 'behind' : 'on-track';
-                      const streak = counselee.currentStreak || 0;
-                      return (
-                        <div
-                          key={counselee.id}
-                          className={`accountability-tile status-${status}`}
-                          onClick={() => setSelectedCounselee(counselee)}
-                        >
-                          <div className="accountability-tile-top">
-                            <ProfilePhoto photoUrl={counselee.photoUrl || counselee.counseleePhotoUrl} size="small" />
-                            <div className="accountability-tile-info">
-                              <div className="accountability-tile-name">{counselee.name}</div>
-                              <div className="accountability-tile-email">{counselee.email || 'No email'}</div>
-                              <div className="accountability-tile-meta">
-                                <span className="accountability-tile-status">
-                                  {!counselee.uid ? 'No login' : counselee.graduated ? 'Graduated' : behindCount > 0 ? `${behindCount} behind` : streak > 0 ? 'On track' : 'No activity today'}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="streak-circle-container">
-                              <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
-                                {streak}
-                              </div>
-                              <div className="streak-label">day streak</div>
-                            </div>
-                          </div>
-                          {counselee.uid && renderEncourageBar(counselee.uid)}
-                        </div>
-                      );
-                    })}
-                  {counselees.filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated).length === 0 && (
-                    <p className="empty-state">{counseleeTab === 'active' ? 'No active counselees.' : 'No graduated counselees.'}</p>
-                  )}
-                </div>
-              </>
-            )}
-
-            {/* Accountability Partners Tiles - People I'm watching */}
-            {myWatchingUsers.length > 0 && (
-              <>
-                <div className="connected-subheader">ACCOUNTABILITY PARTNERS</div>
-                <div className="accountability-tiles-row">
-                  {myWatchingUsers.map(person => {
-                    const statusData = watchingUsersStatus[person.uid] || {};
-                    const status = statusData.status || 'unknown';
-                    const streak = statusData.streak || 0;
-                    const photoUrl = statusData.photoUrl || null;
+            {counselees.length > 0 ? (
+              <div className="accountability-tiles-row">
+                {counselees
+                  .filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated)
+                  .map(counselee => {
+                    const behindCount = counseleeBehindStatus[counselee.id] || 0;
+                    const status = !counselee.uid ? 'no-login' : counselee.graduated ? 'graduated' : behindCount > 0 ? 'behind' : 'on-track';
+                    const streak = counselee.currentStreak || 0;
                     return (
                       <div
-                        key={person.uid}
+                        key={counselee.id}
                         className={`accountability-tile status-${status}`}
-                        onClick={() => setSelectedWatchedUser(person)}
+                        onClick={() => setSelectedCounselee(counselee)}
                       >
                         <div className="accountability-tile-top">
-                          <ProfilePhoto photoUrl={photoUrl} size="small" />
+                          <ProfilePhoto photoUrl={counselee.photoUrl || counselee.counseleePhotoUrl} size="small" />
                           <div className="accountability-tile-info">
-                            <div className="accountability-tile-name">{person.name}</div>
-                            <div className="accountability-tile-email">{person.email}</div>
+                            <div className="accountability-tile-name">{counselee.name}</div>
+                            <div className="accountability-tile-email">{counselee.email || 'No email'}</div>
                             <div className="accountability-tile-meta">
                               <span className="accountability-tile-status">
-                                {getAPStatusLabel(status)}
+                                {!counselee.uid ? 'No login' : counselee.graduated ? 'Graduated' : behindCount > 0 ? `${behindCount} behind` : streak > 0 ? 'On track' : 'No activity today'}
                               </span>
                             </div>
                           </div>
@@ -2770,12 +2760,16 @@ export default function UnifiedDashboard() {
                             <div className="streak-label">day streak</div>
                           </div>
                         </div>
-                        {renderEncourageBar(person.uid)}
+                        {counselee.uid && renderEncourageBar(counselee.uid)}
                       </div>
                     );
                   })}
-                </div>
-              </>
+                {counselees.filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated).length === 0 && (
+                  <p className="empty-state">{counseleeTab === 'active' ? 'No active counselees.' : 'No graduated counselees.'}</p>
+                )}
+              </div>
+            ) : (
+              <p className="empty-state-slim">No counselees yet.</p>
             )}
 
             <AccountabilityPartnersModal
