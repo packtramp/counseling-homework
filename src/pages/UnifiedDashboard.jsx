@@ -59,6 +59,7 @@ export default function UnifiedDashboard() {
   const [myWatchingUsers, setMyWatchingUsers] = useState([]); // People I'm holding accountable
   const [watchingUsersStatus, setWatchingUsersStatus] = useState({}); // { uid: { status, streak } }
   const [showAccountabilityPartnersModal, setShowAccountabilityPartnersModal] = useState(false);
+  const [apModalDefaultTab, setApModalDefaultTab] = useState('view');
   const [selectedWatchedUser, setSelectedWatchedUser] = useState(null); // Currently viewing this person's data
   const [watchedUserProfile, setWatchedUserProfile] = useState(null); // Their user doc (phone, etc.)
   const [watchedUserHomework, setWatchedUserHomework] = useState([]);
@@ -2594,8 +2595,8 @@ export default function UnifiedDashboard() {
 
             {/* Accountability Partners section (above counselees) */}
             <div className="connected-subheader">
-              <span className="connected-subheader-clickable" onClick={() => setShowAccountabilityPartnersModal(true)}>ACCOUNTABILITY PARTNERS</span>
-              <button className="slim-add-btn" onClick={() => setShowAccountabilityPartnersModal(true)}>+ AP</button>
+              <span className="connected-subheader-clickable" onClick={() => { setApModalDefaultTab('view'); setShowAccountabilityPartnersModal(true); }}>ACCOUNTABILITY PARTNERS</span>
+              <button className="slim-add-btn" onClick={() => { setApModalDefaultTab('add'); setShowAccountabilityPartnersModal(true); }}>+ AP</button>
             </div>
 
             {/* Pending AP Invite Tiles */}
@@ -2781,6 +2782,7 @@ export default function UnifiedDashboard() {
               currentUserUid={user?.uid}
               currentUserName={myData?.name || userProfile?.name || 'Someone'}
               myCounselorId={userProfile?.counselorId || null}
+              defaultTab={apModalDefaultTab}
             />
 
             <div className="b-dashboard-grid">

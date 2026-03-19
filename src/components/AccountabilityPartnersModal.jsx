@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { db, auth } from '../config/firebase';
 import { collection, query, where, getDocs, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import ProfilePhoto from './ProfilePhoto';
@@ -23,9 +23,11 @@ export default function AccountabilityPartnersModal({
   onRemovePartner,
   currentUserUid,
   currentUserName,
-  myCounselorId
+  myCounselorId,
+  defaultTab = 'view'
 }) {
-  const [activeTab, setActiveTab] = useState('view'); // 'view' | 'add'
+  const [activeTab, setActiveTab] = useState(defaultTab); // 'view' | 'add'
+  useEffect(() => { if (isOpen) setActiveTab(defaultTab); }, [isOpen, defaultTab]);
   const [searchEmail, setSearchEmail] = useState('');
   const [searchResult, setSearchResult] = useState(null);
   const [searching, setSearching] = useState(false);
