@@ -4946,6 +4946,99 @@ button.counselor-check-indicator.clickable-check:active {
   text-align: center;
 }
 
+/* Connected Accounts Tile (replaces AP tile) */
+.connected-accounts-tile {
+  background: white;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.connected-add-wrapper {
+  position: relative;
+  margin-left: auto;
+}
+
+.connected-add-btn {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.connected-add-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9;
+}
+
+.connected-add-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 10;
+  min-width: 200px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.connected-add-menu button {
+  display: block;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.connected-add-menu button:hover {
+  background: var(--color-gray-100);
+}
+
+.connected-subheader {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  margin: 0.75rem 0 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.connected-subheader .counselee-tabs {
+  margin: 0;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.connected-subheader .tab-btn {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+}
+
 /* Accountability Partners Modal */
 .ap-modal {
   max-width: 500px;
