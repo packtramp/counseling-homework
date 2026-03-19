@@ -72,6 +72,21 @@ export default function HelpPage() {
         </p>
       </div>
 
+      {/* Navigation */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>Navigation</h2>
+        <p style={pStyle}>
+          The app uses a <strong>bottom navigation bar</strong> with five tabs:
+        </p>
+        <ul style={ulStyle}>
+          <li><strong>Heart Journals</strong> — Create and view Heart Journals</li>
+          <li><strong>Think Lists</strong> — View and review your Think Lists</li>
+          <li><strong>Home</strong> (center) — Your main dashboard. Tap again to return from any sub-view.</li>
+          <li><strong>Journaling</strong> — Free-form journal entries</li>
+          <li><strong>Settings</strong> — Account settings, reminders, and support</li>
+        </ul>
+      </div>
+
       {/* Your Dashboard */}
       <div style={sectionStyle}>
         <h2 style={h2Style}>Your Dashboard</h2>
@@ -87,6 +102,9 @@ export default function HelpPage() {
           <li><strong>Recurring tasks</strong> — Things to do daily or X times per week (e.g., "Read Romans 8 daily")</li>
           <li><strong>Memorization</strong> — Scripture memory assignments to check off as you practice</li>
         </ul>
+        <p style={pStyle}>
+          Some homework items are linked to journals or think lists. These show a small icon next to the title — tap the item to jump directly to the linked journal or think list.
+        </p>
 
         <h3 style={h3Style}>Heart Journals</h3>
         <p style={pStyle}>
@@ -208,8 +226,8 @@ export default function HelpPage() {
           Share prayer needs with your accountability partners and counselor. You'll find the <strong>Prayer Requests</strong> tile on the right side of your dashboard, below your journals.
         </p>
         <ul style={ulStyle}>
-          <li><strong>Adding a request:</strong> Click the 🙏+ button, type your prayer request (up to 500 characters), and set an end date (up to 1 month out). When you submit, all your APs and your counselor will receive an email.</li>
-          <li><strong>End date:</strong> Prayer requests automatically disappear after the end date. This keeps requests fresh and relevant. You can always add a new one.</li>
+          <li><strong>Adding a request:</strong> Click the 🙏+ button, type your prayer request (up to 500 characters), and set an end date (defaults to 1 week out). When you submit, all your APs and your counselor will receive an email.</li>
+          <li><strong>End date:</strong> Prayer requests automatically disappear after the end date. This keeps requests fresh and relevant. You can always add a new one or extend an existing one.</li>
           <li><strong>"Prayed" button:</strong> When someone sees your prayer request, they can click the 🙏 button to let you know they prayed for you. You'll receive an email (max 1 per person per day).</li>
           <li><strong>Prayer counter:</strong> The 🙏 counter on your dashboard shows how many times others have prayed for your requests. Click it to see who prayed and when.</li>
           <li><strong>Editing:</strong> You can edit your own prayer requests to update the text, change the end date, or add an outcome describing how God answered.</li>
@@ -239,7 +257,7 @@ export default function HelpPage() {
       <div style={sectionStyle}>
         <h2 style={h2Style}>For Counselors</h2>
         <p style={pStyle}>
-          If you're a counselor, you'll see a <strong>"My Counselees"</strong> section on your dashboard in addition to your own homework area.
+          If you're a counselor, you'll see a <strong>"My Counselees"</strong> section on your dashboard (in the ME tab) in addition to your own homework area.
         </p>
 
         <h3 style={h3Style}>Adding Counselees</h3>
@@ -288,17 +306,33 @@ export default function HelpPage() {
         </ul>
       </div>
 
+      {/* Vacation Mode */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>Vacation Mode</h2>
+        <p style={pStyle}>
+          Going on a trip or need a break? Turn on <strong>Vacation Mode</strong> in Settings to pause your homework tracking.
+        </p>
+        <ul style={ulStyle}>
+          <li><strong>What it does:</strong> Homework is automatically marked complete each day while you're away. Your streaks are frozen (they won't grow, but they won't reset either).</li>
+          <li><strong>Email reminders:</strong> Paused — you won't receive any reminder emails while on vacation.</li>
+          <li><strong>AP tiles:</strong> Your accountability partners will see a blue "Vacation" badge on your tile so they know you're away.</li>
+          <li><strong>Turning it off:</strong> When you return, turn off Vacation Mode in Settings. Your homework picks up right where you left off.</li>
+        </ul>
+      </div>
+
       {/* Account Settings */}
       <div style={sectionStyle}>
         <h2 style={h2Style}>Account Settings</h2>
         <p style={pStyle}>
-          Access Account Settings by tapping your profile icon in the top right corner. From there you can:
+          Access Account Settings by tapping the <strong>Settings</strong> icon (gear) in the bottom navigation bar. From there you can:
         </p>
         <ul style={ulStyle}>
           <li>Update your name and profile photo</li>
           <li>Change your email or phone number</li>
           <li>Configure your reminder schedule (times and days)</li>
           <li>Turn email reminders on or off</li>
+          <li>Toggle Vacation Mode on or off</li>
+          <li>Send feedback or report issues</li>
         </ul>
 
         <h3 style={h3Style}>Your Activity History</h3>
