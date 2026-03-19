@@ -376,9 +376,9 @@ export default function UnifiedDashboard() {
     };
   }, [user, userProfile?.counselorId]);
 
-  // Load counselees (only if counselor)
+  // Load counselees (any account can have counselees)
   useEffect(() => {
-    if (!user || !isCounselor) {
+    if (!user) {
       setCounselees([]);
       return;
     }
@@ -405,11 +405,11 @@ export default function UnifiedDashboard() {
     });
 
     return () => unsubscribe();
-  }, [user, isCounselor]);
+  }, [user]);
 
   // Calculate behind status for counselees
   useEffect(() => {
-    if (!user || !isCounselor || counselees.length === 0) {
+    if (!user || counselees.length === 0) {
       setCounseeleBehindStatus({});
       return;
     }
@@ -432,7 +432,7 @@ export default function UnifiedDashboard() {
     };
 
     fetchBehindStatus();
-  }, [user, isCounselor, counselees]);
+  }, [user, counselees]);
 
   // Real-time status for people I'm watching (accountability partners)
   useEffect(() => {
@@ -1475,6 +1475,11 @@ export default function UnifiedDashboard() {
       }
 
       const counseleeRef = await addDoc(collection(db, `counselors/${user.uid}/counselees`), counseleeDoc);
+
+      // Auto-promote to counselor when adding first counselee
+      if (!isCounselor) {
+        await updateDoc(doc(db, 'users', user.uid), { isCounselor: true });
+      }
 
       // Only create counseleeLinks and users doc if email was provided
       if (hasEmail && uid) {
@@ -2686,8 +2691,7 @@ export default function UnifiedDashboard() {
               </div>
             )}
 
-            {/* My Counselees section (inline for counselors) */}
-            {isCounselor && (
+            {/* My Counselees section (visible to all accounts) */}
               <div className="my-counselees-section">
                 <div className="counselee-header">
                   <h2>My Counselees</h2>
@@ -2763,7 +2767,6 @@ export default function UnifiedDashboard() {
                   </div>
                 )}
               </div>
-            )}
 
             <AccountabilityPartnersModal
               isOpen={showAccountabilityPartnersModal}

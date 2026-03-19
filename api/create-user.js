@@ -78,11 +78,17 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Forbidden - UID mismatch' });
     }
 
-    // Verify caller is actually a counselor or superAdmin
+    // Verify caller exists — any authenticated user can add counselees
     const db = admin.firestore();
     const callerDoc = await db.collection('users').doc(decodedToken.uid).get();
-    if (!callerDoc.exists || (!callerDoc.data().isCounselor && !callerDoc.data().isSuperAdmin)) {
-      return res.status(403).json({ error: 'Forbidden - must be a counselor' });
+    if (!callerDoc.exists) {
+      return res.status(403).json({ error: 'Forbidden - user not found' });
+    }
+
+    // Auto-promote to counselor when adding first counselee
+    if (!callerDoc.data().isCounselor) {
+      await db.collection('users').doc(decodedToken.uid).update({ isCounselor: true });
+      console.log('Auto-promoted user to counselor:', decodedToken.uid);
     }
 
     // Create the user
