@@ -2106,6 +2106,28 @@ export default function UnifiedDashboard() {
       setTimeout(() => setDateSaveStatus(null), 2000);
     };
 
+    const handleDurationChange = async (minutes) => {
+      const duration = minutes === '' ? null : Number(minutes);
+      setSelectedCounseleeSession(prev => ({ ...prev, duration }));
+      setDateSaveStatus('saving');
+      await updateDoc(
+        doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, selectedCounseleeSession.id),
+        { duration: duration || null }
+      );
+      if (selectedCounseleeSession.isJoint && selectedCounseleeSession.linkedSessionId) {
+        try {
+          await updateDoc(
+            doc(db, `counselors/${user.uid}/counselees/${selectedCounseleeSession.linkedCounseleeId}/sessions`, selectedCounseleeSession.linkedSessionId),
+            { duration: duration || null }
+          );
+        } catch (e) {
+          console.error('Failed to sync duration to spouse session:', e);
+        }
+      }
+      setDateSaveStatus('saved');
+      setTimeout(() => setDateSaveStatus(null), 2000);
+    };
+
     return (
       <div className="dashboard">
         <header>
@@ -2126,9 +2148,28 @@ export default function UnifiedDashboard() {
           <div className="session-date-row">
             <label>Session:</label>
             <input type="datetime-local" value={getSessionDateTimeValue()} onChange={(e) => handleDateChange(e.target.value)} className="session-date-input" />
-            {dateSaveStatus && <span className={`save-status ${dateSaveStatus}`}>{dateSaveStatus === 'saving' ? 'Saving...' : '✓ Saved'}</span>}
             {selectedCounseleeSession.isJoint && <span className="joint-badge" style={{ marginLeft: 8 }}>Joint</span>}
             <button className="delete-session-btn" onClick={handleDeleteCounseleeSession} title="Delete this session">Delete Session</button>
+          </div>
+          <div className="session-date-row">
+            <label>Duration:</label>
+            <select
+              className="session-duration-select"
+              value={selectedCounseleeSession.duration || ''}
+              onChange={(e) => handleDurationChange(e.target.value)}
+            >
+              <option value="">—</option>
+              <option value="30">30 min</option>
+              <option value="45">45 min</option>
+              <option value="60">1 hr</option>
+              <option value="75">1 hr 15 min</option>
+              <option value="90">1 hr 30 min</option>
+              <option value="105">1 hr 45 min</option>
+              <option value="120">2 hr</option>
+              <option value="150">2 hr 30 min</option>
+              <option value="180">3 hr</option>
+            </select>
+            {dateSaveStatus && <span className={`save-status ${dateSaveStatus}`}>{dateSaveStatus === 'saving' ? 'Saving...' : '✓ Saved'}</span>}
           </div>
           <div className="session-columns">
             <div className="session-homework-column">

@@ -770,6 +770,28 @@ export default function CounselorDashboard() {
       setTimeout(() => setDateSaveStatus(null), 2000);
     };
 
+    const handleDurationChange = async (minutes) => {
+      const duration = minutes === '' ? null : Number(minutes);
+      setSelectedSession(prev => ({ ...prev, duration }));
+      setDateSaveStatus('saving');
+      await updateDoc(
+        doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, selectedSession.id),
+        { duration: duration || null }
+      );
+      if (selectedSession.isJoint && selectedSession.linkedSessionId) {
+        try {
+          await updateDoc(
+            doc(db, `counselors/${user.uid}/counselees/${selectedSession.linkedCounseleeId}/sessions`, selectedSession.linkedSessionId),
+            { duration: duration || null }
+          );
+        } catch (e) {
+          console.error('Failed to sync duration to spouse session:', e);
+        }
+      }
+      setDateSaveStatus('saved');
+      setTimeout(() => setDateSaveStatus(null), 2000);
+    };
+
     return (
       <div className="dashboard">
         <header>
@@ -810,6 +832,25 @@ export default function CounselorDashboard() {
               onChange={(e) => handleDateChange(e.target.value)}
               className="session-date-input"
             />
+          </div>
+          <div className="session-date-row">
+            <label>Duration:</label>
+            <select
+              className="session-duration-select"
+              value={selectedSession.duration || ''}
+              onChange={(e) => handleDurationChange(e.target.value)}
+            >
+              <option value="">—</option>
+              <option value="30">30 min</option>
+              <option value="45">45 min</option>
+              <option value="60">1 hr</option>
+              <option value="75">1 hr 15 min</option>
+              <option value="90">1 hr 30 min</option>
+              <option value="105">1 hr 45 min</option>
+              <option value="120">2 hr</option>
+              <option value="150">2 hr 30 min</option>
+              <option value="180">3 hr</option>
+            </select>
             {dateSaveStatus && (
               <span className={`save-status ${dateSaveStatus}`}>
                 {dateSaveStatus === 'saving' ? 'Saving...' : '✓ Saved'}
