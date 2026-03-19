@@ -349,7 +349,7 @@ export default function ThinkListPage({
           assignedBy: role,
           status: 'active',
           weeklyTarget,
-          dailyCap: 3, // Think Lists have hardcoded daily cap of 3
+          dailyCap: formData.timesPerDay,
           durationWeeks: formData.durationWeeks,
           linkedThinkListId: thinkListId,
           updatedAt: serverTimestamp()
