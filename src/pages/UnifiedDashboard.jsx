@@ -87,7 +87,7 @@ export default function UnifiedDashboard() {
   // "My Counselees" section state (only for counselors)
   const [counselees, setCounselees] = useState([]);
   const [counseleeTab, setCounseleeTab] = useState('active');
-  const [counseleeBehindStatus, setCounseeleBehindStatus] = useState({});
+  const [counseleeLiveStatus, setCounseleeLiveStatus] = useState({});
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [newCounselee, setNewCounselee] = useState({ name: '', email: '', phone: '', password: '' });
@@ -409,31 +409,51 @@ export default function UnifiedDashboard() {
     return () => unsubscribe();
   }, [user]);
 
-  // Calculate behind status for counselees
+  // Real-time status for counselees (live streak, behind count, vacation — matches AP logic)
   useEffect(() => {
     if (!user || counselees.length === 0) {
-      setCounseeleBehindStatus({});
+      setCounseleeLiveStatus({});
       return;
     }
 
-    const fetchBehindStatus = async () => {
-      const status = {};
+    const unsubscribers = [];
+
+    const setupListeners = async () => {
       for (const counselee of counselees) {
-        if (!counselee.uid) { status[counselee.id] = 0; continue; }
+        if (!counselee.uid) {
+          setCounseleeLiveStatus(prev => ({ ...prev, [counselee.id]: { status: 'neutral', streak: 0, weekStreak: 0, behindCount: 0 } }));
+          continue;
+        }
         try {
-          const hwQuery = query(collection(db, `counselors/${user.uid}/counselees/${counselee.id}/homework`));
-          const snapshot = await getDocs(hwQuery);
-          const hwList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          const behindCount = hwList.filter(h => h.status !== 'cancelled' && isItemBehind(h)).length;
-          status[counselee.id] = behindCount;
+          // Fetch profile for vacation check
+          let profile = null;
+          try {
+            const userDoc = await getDoc(doc(db, 'users', counselee.uid));
+            if (userDoc.exists()) profile = userDoc.data();
+          } catch (e) { /* ignore */ }
+
+          // Real-time listener on homework
+          const hwRef = collection(db, `counselors/${user.uid}/counselees/${counselee.id}/homework`);
+          const unsub = onSnapshot(hwRef, (snapshot) => {
+            const homework = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            const status = calculateAccountabilityStatus(homework, profile);
+            const liveStreak = calculateAPStreak(homework, profile);
+            const liveWeekStreak = calculateWeekStreak(homework);
+            const behindCount = homework.filter(h => h.status !== 'cancelled' && isItemBehind(h, new Date(), profile)).length;
+            setCounseleeLiveStatus(prev => ({
+              ...prev,
+              [counselee.id]: { status, streak: liveStreak, weekStreak: liveWeekStreak, behindCount }
+            }));
+          });
+          unsubscribers.push(unsub);
         } catch (err) {
-          status[counselee.id] = 0;
+          setCounseleeLiveStatus(prev => ({ ...prev, [counselee.id]: { status: 'unknown', streak: 0, weekStreak: 0, behindCount: 0 } }));
         }
       }
-      setCounseeleBehindStatus(status);
     };
 
-    fetchBehindStatus();
+    setupListeners();
+    return () => unsubscribers.forEach(unsub => unsub());
   }, [user, counselees]);
 
   // Real-time status for people I'm watching (accountability partners)
@@ -2734,13 +2754,16 @@ export default function UnifiedDashboard() {
                 {counselees
                   .filter(c => counseleeTab === 'active' ? !c.graduated : c.graduated)
                   .map(counselee => {
-                    const behindCount = counseleeBehindStatus[counselee.id] || 0;
-                    const status = !counselee.uid ? 'no-login' : counselee.graduated ? 'graduated' : behindCount > 0 ? 'behind' : 'on-track';
-                    const streak = counselee.currentStreak || 0;
+                    const liveData = counseleeLiveStatus[counselee.id] || {};
+                    const liveStatus = liveData.status || 'unknown';
+                    const streak = liveData.streak || 0;
+                    const behindCount = liveData.behindCount || 0;
+                    const tileStatus = !counselee.uid ? 'no-login' : counselee.graduated ? 'graduated' : liveStatus === 'red' ? 'behind' : liveStatus;
+                    const statusLabel = !counselee.uid ? 'No login' : counselee.graduated ? 'Graduated' : behindCount > 0 ? `${behindCount} behind` : getAPStatusLabel(liveStatus);
                     return (
                       <div
                         key={counselee.id}
-                        className={`accountability-tile status-${status}`}
+                        className={`accountability-tile status-${tileStatus}`}
                         onClick={() => setSelectedCounselee(counselee)}
                       >
                         <div className="accountability-tile-top">
@@ -2750,7 +2773,7 @@ export default function UnifiedDashboard() {
                             <div className="accountability-tile-email">{counselee.email || 'No email'}</div>
                             <div className="accountability-tile-meta">
                               <span className="accountability-tile-status">
-                                {!counselee.uid ? 'No login' : counselee.graduated ? 'Graduated' : behindCount > 0 ? `${behindCount} behind` : streak > 0 ? 'On track' : 'No activity today'}
+                                {statusLabel}
                               </span>
                             </div>
                           </div>

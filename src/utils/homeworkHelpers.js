@@ -714,8 +714,11 @@ export const calculateAPStreak = (homework, profile) => {
     if (hasActivity) {
       // Did something → streak increases
       streak++;
+    } else if (daysBack === 0) {
+      // Today isn't over yet — don't break streak for incomplete today
+      // Just stagnate (no increment, no break)
     } else {
-      // Did nothing → check if any active item was irrecoverably behind
+      // Past day with no activity → check if any active item was irrecoverably behind
       if (isAnyItemBehindOnDate(checkDate)) {
         break; // behind with no recovery → streak ends
       }
@@ -747,7 +750,7 @@ export const calculateWeekStreak = (homework) => {
       // Get the Sunday that starts this calendar week
       const sunday = new Date(cDate);
       sunday.setDate(sunday.getDate() - sunday.getDay());
-      const weekKey = `${sunday.getFullYear()}-${sunday.getMonth()}-${sunday.getDate()}`;
+      const weekKey = `${sunday.getFullYear()}-${sunday.getMonth() + 1}-${sunday.getDate()}`;
       activeWeeks.add(weekKey);
     }
   }
@@ -764,7 +767,7 @@ export const calculateWeekStreak = (homework) => {
   let checkWeek = new Date(currentSunday);
 
   while (true) {
-    const weekKey = `${checkWeek.getFullYear()}-${checkWeek.getMonth()}-${checkWeek.getDate()}`;
+    const weekKey = `${checkWeek.getFullYear()}-${checkWeek.getMonth() + 1}-${checkWeek.getDate()}`;
     if (activeWeeks.has(weekKey)) {
       streak++;
       checkWeek.setDate(checkWeek.getDate() - 7);
@@ -779,7 +782,7 @@ export const calculateWeekStreak = (homework) => {
     checkWeek = new Date(currentSunday);
     checkWeek.setDate(checkWeek.getDate() - 7);
     while (true) {
-      const weekKey = `${checkWeek.getFullYear()}-${checkWeek.getMonth()}-${checkWeek.getDate()}`;
+      const weekKey = `${checkWeek.getFullYear()}-${checkWeek.getMonth() + 1}-${checkWeek.getDate()}`;
       if (activeWeeks.has(weekKey)) {
         streak++;
         checkWeek.setDate(checkWeek.getDate() - 7);

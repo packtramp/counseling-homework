@@ -98,15 +98,14 @@ export default function HomeworkTile({
       return null;
     }
     const now = new Date();
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const msPerWeek = 7 * msPerDay;
-    const totalWeeks = Math.floor((now - assignedDate) / msPerWeek);
+    const totalDays = Math.round((now - assignedDate) / (24 * 60 * 60 * 1000));
+    const totalWeeks = Math.floor(totalDays / 7);
     // Include current (in-progress) week in count
     const totalPeriodsIncludingCurrent = totalWeeks + 1;
     let completed = 0;
     for (let w = 0; w < totalWeeks; w++) {
-      const weekStart = new Date(assignedDate.getTime() + w * msPerWeek);
-      const weekEnd = new Date(assignedDate.getTime() + (w + 1) * msPerWeek);
+      const weekStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + w * 7);
+      const weekEnd = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + (w + 1) * 7);
       const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
       const effectiveTarget = w === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
       const dailyBuckets = {};
