@@ -2681,6 +2681,7 @@ export default function UnifiedDashboard() {
                   const statusData = watchingUsersStatus[person.uid] || {};
                   const status = statusData.status || 'unknown';
                   const streak = statusData.streak || 0;
+                  const weekStreak = statusData.weekStreak || 0;
                   const photoUrl = statusData.photoUrl || null;
                   return (
                     <div
@@ -2699,11 +2700,19 @@ export default function UnifiedDashboard() {
                             </span>
                           </div>
                         </div>
-                        <div className="streak-circle-container">
-                          <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
-                            {streak}
+                        <div className="streak-circles-dual">
+                          <div className="streak-circle-container">
+                            <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
+                              {streak}
+                            </div>
+                            <div className="streak-label">days</div>
                           </div>
-                          <div className="streak-label">day streak</div>
+                          <div className="streak-circle-container">
+                            <div className="streak-circle streak-circle-week" style={{ backgroundColor: weekStreak > 0 ? '#2b6cb0' : '#a0aec0' }}>
+                              {weekStreak}
+                            </div>
+                            <div className="streak-label">weeks</div>
+                          </div>
                         </div>
                       </div>
                       {renderEncourageBar(person.uid)}
@@ -2757,6 +2766,7 @@ export default function UnifiedDashboard() {
                     const liveData = counseleeLiveStatus[counselee.id] || {};
                     const liveStatus = liveData.status || 'unknown';
                     const streak = liveData.streak || 0;
+                    const weekStreak = liveData.weekStreak || 0;
                     const behindCount = liveData.behindCount || 0;
                     const tileStatus = !counselee.uid ? 'no-login' : counselee.graduated ? 'graduated' : liveStatus === 'red' ? 'behind' : liveStatus;
                     const statusLabel = !counselee.uid ? 'No login' : counselee.graduated ? 'Graduated' : behindCount > 0 ? `${behindCount} behind` : getAPStatusLabel(liveStatus);
@@ -2777,11 +2787,19 @@ export default function UnifiedDashboard() {
                               </span>
                             </div>
                           </div>
-                          <div className="streak-circle-container">
-                            <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
-                              {streak}
+                          <div className="streak-circles-dual">
+                            <div className="streak-circle-container">
+                              <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
+                                {streak}
+                              </div>
+                              <div className="streak-label">days</div>
                             </div>
-                            <div className="streak-label">day streak</div>
+                            <div className="streak-circle-container">
+                              <div className="streak-circle streak-circle-week" style={{ backgroundColor: weekStreak > 0 ? '#2b6cb0' : '#a0aec0' }}>
+                                {weekStreak}
+                              </div>
+                              <div className="streak-label">weeks</div>
+                            </div>
                           </div>
                         </div>
                         {counselee.uid && renderEncourageBar(counselee.uid)}
