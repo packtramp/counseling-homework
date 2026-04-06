@@ -98,6 +98,7 @@ export default function PrayerRequestsTile({
       if (!person.uid) return null;
       const q = query(
         collection(db, `users/${person.uid}/prayerRequests`),
+        where('sharedWith', 'array-contains', user.uid),
         orderBy('createdAt', 'desc')
       );
       return onSnapshot(q, (snap) => {
@@ -116,15 +117,23 @@ export default function PrayerRequestsTile({
       }, (err) => console.error('AP PR listener error:', err));
     }).filter(Boolean);
     return () => unsubs.forEach(u => u());
-  }, [isOwnerView, watchingUsers]);
+  }, [isOwnerView, watchingUsers, user?.uid]);
 
   // Listen to target user's prayer requests (when viewing AP/counselee detail)
   useEffect(() => {
-    if (!targetUid) return;
-    const q = query(
-      collection(db, `users/${targetUid}/prayerRequests`),
-      orderBy('createdAt', 'desc')
-    );
+    if (!targetUid || !user?.uid) return;
+    // Counselor sees all their counselees' PRs; APs only see ones shared with them.
+    const isCounselorOfTarget = isCounselor && counseleeUids.some(c => c.uid === targetUid);
+    const q = isCounselorOfTarget
+      ? query(
+          collection(db, `users/${targetUid}/prayerRequests`),
+          orderBy('createdAt', 'desc')
+        )
+      : query(
+          collection(db, `users/${targetUid}/prayerRequests`),
+          where('sharedWith', 'array-contains', user.uid),
+          orderBy('createdAt', 'desc')
+        );
     const unsub = onSnapshot(q, (snap) => {
       const nowDate = new Date();
       const prs = snap.docs
@@ -137,7 +146,7 @@ export default function PrayerRequestsTile({
       setApPrayerRequests(prs);
     }, (err) => console.error('Target PR listener error:', err));
     return unsub;
-  }, [targetUid, targetName]);
+  }, [targetUid, targetName, user?.uid, isCounselor, counseleeUids]);
 
   // Listen to counselee prayer requests (counselor only, own dashboard)
   useEffect(() => {

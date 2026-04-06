@@ -52,14 +52,16 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
-    // Prayer Requests - user owns their own PRs, APs + counselors can read
+    // Prayer Requests - user owns their own PRs, APs (in sharedWith) + counselors can read
     match /users/{userId}/prayerRequests/{requestId} {
       // Owner can CRUD their own prayer requests
       allow read, write: if request.auth != null && request.auth.uid == userId;
-      // APs can read and update prayerCount (via accountabilityPartnerUids on the PR owner's user doc)
+      // APs can read and update prayerCount IFF they are in this PR's sharedWith array.
+      // Legacy docs without sharedWith fall back to accountabilityPartnerUids (migration target).
       allow read, update: if request.auth != null &&
-        request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.accountabilityPartnerUids;
-      // Counselor can read and update prayerCount on their counselee's prayer requests
+        request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.accountabilityPartnerUids &&
+        (!('sharedWith' in resource.data) || request.auth.uid in resource.data.sharedWith);
+      // Counselor can read and update prayerCount on their counselee's prayer requests (unrestricted)
       allow read, update: if request.auth != null &&
         get(/databases/$(database)/documents/users/$(userId)).data.counselorId == request.auth.uid;
 
@@ -67,10 +69,12 @@ service cloud.firestore {
       match /prayers/{prayerId} {
         // Owner of the PR can read prayers on their requests
         allow read: if request.auth != null && request.auth.uid == userId;
-        // APs can read and write prayers (to record "prayed" clicks)
+        // APs can read/create prayers IFF in parent PR's sharedWith (or legacy docs without the field)
         allow read, create: if request.auth != null &&
-          request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.accountabilityPartnerUids;
-        // Counselor can read and write prayers
+          request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.accountabilityPartnerUids &&
+          (!('sharedWith' in get(/databases/$(database)/documents/users/$(userId)/prayerRequests/$(requestId)).data) ||
+            request.auth.uid in get(/databases/$(database)/documents/users/$(userId)/prayerRequests/$(requestId)).data.sharedWith);
+        // Counselor can read and write prayers (unrestricted)
         allow read, create: if request.auth != null &&
           get(/databases/$(database)/documents/users/$(userId)).data.counselorId == request.auth.uid;
       }

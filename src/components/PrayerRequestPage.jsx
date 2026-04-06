@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 
@@ -8,12 +8,21 @@ import { collection, addDoc, updateDoc, doc, serverTimestamp, Timestamp } from '
  * Props:
  * - user: { uid } - current authenticated user
  * - userProfile: { name, ... } - current user's profile
+ * - accountabilityPartners: [{ uid, name, email }] - owner's APs (for audience selection)
  * - editingPR: object|null - existing PR to edit (null = new)
- * - onClose: () => void - called when closing/cancelling
- * - onSaved: () => void - called after successful save
- * - getAuthToken: () => Promise<string> - function to get Firebase auth token
+ * - onClose: () => void
+ * - onSaved: () => void
+ * - getAuthToken: () => Promise<string>
  */
-export default function PrayerRequestPage({ user, userProfile, editingPR = null, onClose, onSaved, getAuthToken }) {
+export default function PrayerRequestPage({
+  user,
+  userProfile,
+  accountabilityPartners = [],
+  editingPR = null,
+  onClose,
+  onSaved,
+  getAuthToken
+}) {
   const [formText, setFormText] = useState(editingPR?.text || '');
   const [formExpiry, setFormExpiry] = useState(() => {
     if (editingPR?.expiresAt) {
@@ -27,6 +36,35 @@ export default function PrayerRequestPage({ user, userProfile, editingPR = null,
   const [formOutcome, setFormOutcome] = useState(editingPR?.outcome || '');
   const [saving, setSaving] = useState(false);
 
+  // Dedup APs by uid (defensive) — and sort by name for stable UI
+  const apOptions = useMemo(() => {
+    const seen = new Set();
+    return (accountabilityPartners || [])
+      .filter(ap => ap && ap.uid && !seen.has(ap.uid) && seen.add(ap.uid))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [accountabilityPartners]);
+
+  // Selected AP uids — default: all checked on new; existing sharedWith on edit
+  const [sharedWith, setSharedWith] = useState(() => {
+    if (editingPR?.sharedWith && Array.isArray(editingPR.sharedWith)) {
+      return new Set(editingPR.sharedWith);
+    }
+    // Default: all APs checked
+    return new Set((accountabilityPartners || []).map(ap => ap.uid).filter(Boolean));
+  });
+
+  const toggleAP = (uid) => {
+    setSharedWith(prev => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSharedWith(new Set(apOptions.map(ap => ap.uid)));
+  const selectNone = () => setSharedWith(new Set());
+
   const getMinExpiry = () => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
@@ -39,14 +77,24 @@ export default function PrayerRequestPage({ user, userProfile, editingPR = null,
     return d.toISOString().split('T')[0];
   };
 
+  const selectedCount = sharedWith.size;
+  const totalAPs = apOptions.length;
+
   const handleSave = useCallback(async () => {
     if (!formText.trim()) return;
     const trimmed = formText.trim().substring(0, 500);
+    const sharedWithArr = Array.from(sharedWith);
 
     if (!editingPR) {
-      const confirmed = window.confirm(
-        'You are saving this prayer request. All your APs will get an email and pray for you. Click OK to continue or Cancel to stop.'
-      );
+      let msg;
+      if (selectedCount === 0) {
+        msg = totalAPs === 0
+          ? 'You are saving this prayer request. Only your counselor will see it (you have no accountability partners). Click OK to continue.'
+          : 'You are saving this prayer request. You have NOT selected any accountability partners, so only your counselor will see it. Click OK to continue.';
+      } else {
+        msg = `You are saving this prayer request. ${selectedCount} accountability partner${selectedCount === 1 ? '' : 's'} + your counselor will get an email and pray for you. Click OK to continue or Cancel to stop.`;
+      }
+      const confirmed = window.confirm(msg);
       if (!confirmed) return;
     }
 
@@ -59,7 +107,8 @@ export default function PrayerRequestPage({ user, userProfile, editingPR = null,
         await updateDoc(doc(db, `users/${user.uid}/prayerRequests/${editingPR.id}`), {
           text: trimmed,
           expiresAt: Timestamp.fromDate(expiryDate),
-          outcome: formOutcome.trim() || null
+          outcome: formOutcome.trim() || null,
+          sharedWith: sharedWithArr
         });
       } else {
         await addDoc(collection(db, `users/${user.uid}/prayerRequests`), {
@@ -69,7 +118,8 @@ export default function PrayerRequestPage({ user, userProfile, editingPR = null,
           outcome: null,
           ownerUid: user.uid,
           ownerName: userProfile?.name || 'Unknown',
-          prayerCount: 0
+          prayerCount: 0,
+          sharedWith: sharedWithArr
         });
 
         try {
@@ -81,7 +131,8 @@ export default function PrayerRequestPage({ user, userProfile, editingPR = null,
               type: 'prayer-new',
               senderUid: user.uid,
               senderName: userProfile?.name || 'Someone',
-              prayerText: trimmed
+              prayerText: trimmed,
+              sharedWithUids: sharedWithArr
             })
           });
         } catch (emailErr) {
@@ -96,7 +147,7 @@ export default function PrayerRequestPage({ user, userProfile, editingPR = null,
     } finally {
       setSaving(false);
     }
-  }, [formText, formExpiry, formOutcome, editingPR, user?.uid, userProfile?.name, getAuthToken, onClose, onSaved]);
+  }, [formText, formExpiry, formOutcome, editingPR, user?.uid, userProfile?.name, getAuthToken, onClose, onSaved, sharedWith, selectedCount, totalAPs]);
 
   return (
     <div className="pr-form-page">
@@ -138,6 +189,48 @@ export default function PrayerRequestPage({ user, userProfile, editingPR = null,
                 rows={3}
                 maxLength={500}
               />
+            </>
+          )}
+
+          {/* Audience selection */}
+          <label className="pr-form-label" style={{ marginTop: '1rem' }}>Share with</label>
+          {totalAPs === 0 ? (
+            <p className="pr-date-hint" style={{ marginTop: 0 }}>
+              <em>You have no accountability partners yet. Only your counselor will see this prayer request.</em>
+            </p>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                <button type="button" className="pr-ap-select-btn" onClick={selectAll}
+                  style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#edf2f7', border: '1px solid #cbd5e0', borderRadius: '4px', cursor: 'pointer' }}>
+                  Select all
+                </button>
+                <button type="button" className="pr-ap-select-btn" onClick={selectNone}
+                  style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#edf2f7', border: '1px solid #cbd5e0', borderRadius: '4px', cursor: 'pointer' }}>
+                  Select none
+                </button>
+                <span style={{ fontSize: '0.8rem', color: '#718096', alignSelf: 'center', marginLeft: 'auto' }}>
+                  {selectedCount} of {totalAPs} selected
+                </span>
+              </div>
+              <ul className="pr-ap-checklist" style={{ listStyle: 'none', padding: 0, margin: 0, border: '1px solid #e2e8f0', borderRadius: '6px', background: '#f7fafc' }}>
+                {apOptions.map(ap => (
+                  <li key={ap.uid} style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={sharedWith.has(ap.uid)}
+                        onChange={() => toggleAP(ap.uid)}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                      />
+                      <span style={{ color: '#2d3748' }}>{ap.name || ap.email || 'Unknown'}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <span className="pr-date-hint">
+                <em>Your counselor always sees your prayer requests. Uncheck APs you don't want to share with.</em>
+              </span>
             </>
           )}
         </div>

@@ -1961,6 +1961,7 @@ export default function UnifiedDashboard() {
       <PrayerRequestPage
         user={user}
         userProfile={userProfile}
+        accountabilityPartners={myAccountabilityPartners}
         editingPR={viewingMyPrayerRequest.id ? viewingMyPrayerRequest : null}
         onClose={() => setViewingMyPrayerRequest(null)}
         onSaved={() => setViewingMyPrayerRequest(null)}

@@ -166,7 +166,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { recipientUid, type, message, senderUid, senderName: bodySenderName, prayerText } = req.body;
+    const { recipientUid, type, message, senderUid, senderName: bodySenderName, prayerText, sharedWithUids } = req.body;
 
     // ── PRAYER REQUEST NOTIFICATIONS ──
     if (type === 'prayer-new' || type === 'prayer-prayed') {
@@ -184,13 +184,21 @@ export default async function handler(req, res) {
         const escapedPrayerText = escapeHtml(prayerText.substring(0, 200));
         const escapedSender = escapeHtml(senderDisplayName);
 
-        // Collect recipients: APs (accountabilityPartners) + counselor
+        // Collect recipients: APs in sharedWithUids (intersected with real APs) + counselor.
+        // SECURITY: never trust client-supplied uids. Intersect with sender's actual AP list.
         const recipients = [];
         const apList = senderData.accountabilityPartners || [];
+        const allowedApUids = new Set(apList.map(ap => ap.uid).filter(Boolean));
+        // If sharedWithUids is provided (new flow), filter to that set. Otherwise fall back to all APs (legacy).
+        const targetApUids = Array.isArray(sharedWithUids)
+          ? sharedWithUids.filter(uid => allowedApUids.has(uid))
+          : Array.from(allowedApUids);
+        const targetApSet = new Set(targetApUids);
         for (const ap of apList) {
-          if (ap.uid && ap.email) {
+          if (!ap.uid || !targetApSet.has(ap.uid)) continue;
+          if (ap.email) {
             recipients.push({ uid: ap.uid, email: ap.email, name: ap.name || 'Friend' });
-          } else if (ap.uid) {
+          } else {
             const apDoc = await db.collection('users').doc(ap.uid).get();
             if (apDoc.exists && apDoc.data().email) {
               recipients.push({ uid: ap.uid, email: apDoc.data().email, name: apDoc.data().name || 'Friend' });
