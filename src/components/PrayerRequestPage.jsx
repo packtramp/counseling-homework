@@ -233,6 +233,22 @@ export default function PrayerRequestPage({
               </span>
             </>
           )}
+
+          {/* Inline action buttons (fallback so they're always reachable on long forms) */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
+            <button type="button" className="hj-footer-btn hj-back-btn" onClick={onClose} style={{ flex: 1 }}>
+              Back
+            </button>
+            <button
+              type="button"
+              className="hj-footer-btn hj-submit-btn"
+              onClick={handleSave}
+              disabled={saving || !formText.trim() || !formExpiry}
+              style={{ flex: 1 }}
+            >
+              {saving ? 'Saving...' : editingPR?.id ? 'Update' : 'Submit'}
+            </button>
+          </div>
         </div>
       </main>
       <footer className="hj-sticky-footer">
