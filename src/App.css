@@ -63,6 +63,15 @@
   /* Transitions */
   --transition-fast: 0.15s ease;
   --transition-base: 0.2s ease;
+
+  /* Font sizes (additive — for new code; existing rules unchanged) */
+  --font-xs: 0.75rem;
+  --font-sm: 0.85rem;
+  --font-base: 0.9rem;
+  --font-md: 1rem;
+  --font-lg: 1.1rem;
+  --font-xl: 1.25rem;
+  --font-2xl: 1.5rem;
 }
 
 /* ── App Shell (TopHeader + BottomNav) ── */
@@ -1503,10 +1512,11 @@ textarea {
   flex: 1;
   min-width: 120px;
   padding: 0.5rem 1rem;
-  background: var(--color-warning-light);
-  border: 1px solid var(--color-warning);
+  background: var(--color-warning);
+  border: 1px solid var(--color-warning-dark);
   border-radius: 4px;
-  color: var(--color-warning-dark);
+  color: white;
+  font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
   margin: 0;
@@ -1514,23 +1524,26 @@ textarea {
 }
 
 .form-buttons-row .cancel-homework-btn:hover {
-  background: var(--color-warning-light);
+  background: var(--color-warning-dark);
+  border-color: var(--color-warning-dark);
 }
 
 .form-buttons-row .delete-btn {
   flex: 1;
   min-width: 110px;
   padding: 0.5rem 1rem;
-  background: var(--color-danger-light);
-  border: 1px solid var(--color-danger);
+  background: var(--color-danger);
+  border: 1px solid var(--color-danger-dark);
   border-radius: 4px;
-  color: var(--color-danger-dark);
+  color: white;
+  font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
 }
 
 .form-buttons-row .delete-btn:hover {
-  background: var(--color-danger-light);
+  background: var(--color-danger-dark);
+  border-color: var(--color-danger-dark);
 }
 
 .homework-status-item.done-today {
@@ -1660,16 +1673,16 @@ textarea {
   margin-left: auto;
   padding: 0.4rem 0.75rem;
   font-size: 0.8rem;
-  background: var(--color-danger-light);
-  color: var(--color-danger);
-  border: 1px solid var(--color-danger-light);
+  background: var(--color-danger);
+  color: white;
+  font-weight: 600;
+  border: 1px solid var(--color-danger-dark);
   border-radius: 4px;
   cursor: pointer;
 }
 
 .delete-session-btn:hover {
-  background: var(--color-danger-light);
-  border-color: var(--color-danger);
+  background: var(--color-danger-dark);
 }
 
 .session-columns {
@@ -2213,16 +2226,17 @@ textarea {
 .cancel-btn {
   flex: 1;
   padding: 0.5rem;
-  background: var(--color-warning-light);
-  border: 1px solid var(--color-warning);
+  background: var(--color-warning);
+  border: 1px solid var(--color-warning-dark);
   border-radius: 4px;
-  color: var(--color-warning-dark);
+  color: white;
+  font-weight: 600;
   cursor: pointer;
   font-size: 0.85rem;
 }
 
 .cancel-btn:hover {
-  background: var(--color-warning-light);
+  background: var(--color-warning-dark);
 }
 
 .completed-tile {
@@ -2566,17 +2580,19 @@ button.counselor-check-indicator.clickable-check:active {
   display: inline-block;
   padding: 0.25rem 0.5rem;
   margin: 0.25rem 0.25rem 0.25rem 0;
-  background: var(--color-primary-bg);
-  border: 1px solid var(--color-primary-light);
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-primary);
   border-radius: 4px;
-  color: var(--color-primary-dark);
+  color: var(--color-primary-darker);
+  font-weight: 600;
   font-size: 0.85rem;
   cursor: pointer;
   width: auto;
 }
 
 .linked-family-btn:hover {
-  background: var(--color-primary-light);
+  background: var(--color-primary);
+  color: white;
 }
 
 .add-family-btn {
@@ -7266,21 +7282,23 @@ button.counselor-check-indicator.clickable-check:active {
 }
 
 .toggle-counselor-btn.add {
-  background: var(--color-primary-bg);
-  color: var(--color-primary-dark);
+  background: var(--color-primary);
+  color: white;
+  font-weight: 600;
 }
 
 .toggle-counselor-btn.add:hover {
-  background: var(--color-primary-light);
+  background: var(--color-primary-dark);
 }
 
 .toggle-counselor-btn.remove {
-  background: var(--color-danger-bg);
-  color: var(--color-danger-dark);
+  background: var(--color-danger);
+  color: white;
+  font-weight: 600;
 }
 
 .toggle-counselor-btn.remove:hover {
-  background: var(--color-danger-light);
+  background: var(--color-danger-dark);
 }
 
 .toggle-counselor-btn:disabled {
@@ -7430,16 +7448,18 @@ button.counselor-check-indicator.clickable-check:active {
 .reset-password-btn {
   width: 100%;
   padding: 0.6rem 1rem;
-  background: var(--color-primary-bg);
-  color: var(--color-primary-dark);
-  border: 1px solid var(--color-primary-light);
+  background: var(--color-primary);
+  color: white;
+  font-weight: 600;
+  border: 1px solid var(--color-primary);
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9rem;
 }
 
 .reset-password-btn:hover {
-  background: var(--color-primary-light);
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
 }
 
 .reset-password-btn:disabled {
@@ -7461,9 +7481,10 @@ button.counselor-check-indicator.clickable-check:active {
 .admin-delete-user-btn {
   width: 100%;
   padding: 0.6rem 1rem;
-  background: var(--color-danger-bg);
-  color: var(--color-danger-dark);
-  border: 1px solid var(--color-danger);
+  background: var(--color-danger);
+  color: white;
+  font-weight: 600;
+  border: 1px solid var(--color-danger-dark);
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9rem;
@@ -7471,7 +7492,7 @@ button.counselor-check-indicator.clickable-check:active {
 }
 
 .admin-delete-user-btn:hover {
-  background: var(--color-danger-light);
+  background: var(--color-danger-dark);
 }
 
 .save-btn {
@@ -7617,12 +7638,13 @@ button.counselor-check-indicator.clickable-check:active {
   transition: all 0.15s;
   background: white;
 }
-.cheer-btn { border-color: var(--color-success-dark); color: var(--color-success-dark); background: var(--color-success-bg); }
-.cheer-btn:hover:not(:disabled) { background: var(--color-success-light); }
-.nudge-btn { border-color: var(--color-primary-dark); color: var(--color-primary-dark); background: var(--color-primary-bg); }
-.nudge-btn:hover:not(:disabled) { background: var(--color-primary-light); }
-.message-btn { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-bg); }
-.message-btn:hover:not(:disabled) { background: var(--color-primary-light); }
+/* Filled, high-contrast (WCAG AA) — was light bg + medium text, hard to read */
+.cheer-btn { border-color: var(--color-success-dark); color: white; background: var(--color-success-dark); }
+.cheer-btn:hover:not(:disabled) { background: var(--color-success-darker); border-color: var(--color-success-darker); }
+.nudge-btn { border-color: var(--color-primary-dark); color: white; background: var(--color-primary-dark); }
+.nudge-btn:hover:not(:disabled) { background: var(--color-primary-darker); border-color: var(--color-primary-darker); }
+.message-btn { border-color: var(--color-primary); color: white; background: var(--color-primary); }
+.message-btn:hover:not(:disabled) { background: var(--color-primary-dark); border-color: var(--color-primary-dark); }
 .encouragement-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Message modal (floating, from tile popup) */
@@ -7945,20 +7967,21 @@ button.counselor-check-indicator.clickable-check:active {
 }
 
 .pr-prayed-btn {
-  background: var(--color-primary-bg);
-  border: 1px solid var(--color-primary-light);
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
   border-radius: 6px;
-  padding: 0.2rem 0.5rem;
-  color: var(--color-primary-dark);
+  padding: 0.25rem 0.65rem;
+  color: white;
   cursor: pointer;
   font-size: 0.85rem;
+  font-weight: 600;
   white-space: nowrap;
   transition: all 0.2s;
 }
 
 .pr-prayed-btn:hover {
-  background: var(--color-primary-bg);
-  border-color: var(--color-primary);
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
 }
 
 .pr-prayed-active {
@@ -8114,6 +8137,80 @@ button.counselor-check-indicator.clickable-check:active {
 .pr-date-hint {
   font-size: 0.75rem;
   color: var(--color-text-faint);
+}
+
+/* Audience selection (Share with) */
+.pr-ap-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.pr-ap-toolbar-count {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin-left: auto;
+}
+
+.pr-ap-toolbar-btn {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-gray-800);
+  padding: 6px 12px;
+  background: var(--color-gray-200);
+  border: 1px solid var(--color-gray-400);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pr-ap-toolbar-btn:hover {
+  background: var(--color-gray-300);
+}
+
+.pr-ap-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-gray-100);
+  overflow: hidden;
+}
+
+.pr-ap-checklist li {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pr-ap-checklist li:last-child {
+  border-bottom: none;
+}
+
+.pr-ap-checklist label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  margin: 0;
+  color: var(--color-text);
+}
+
+.pr-ap-checklist input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+/* Inline action buttons fallback (long forms) */
+.pr-form-actions-inline {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.pr-form-actions-inline .hj-footer-btn {
+  flex: 1;
 }
 
 /* Activity icon button — small list icon for opening activity history */

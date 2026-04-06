@@ -193,37 +193,28 @@ export default function PrayerRequestPage({
           )}
 
           {/* Audience selection */}
-          <label className="pr-form-label" style={{ marginTop: '1rem' }}>Share with</label>
+          <label className="pr-form-label">Share with</label>
           {totalAPs === 0 ? (
-            <p className="pr-date-hint" style={{ marginTop: 0 }}>
+            <p className="pr-date-hint">
               <em>You have no accountability partners yet. Only your counselor will see this prayer request.</em>
             </p>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                <button type="button" className="pr-ap-select-btn" onClick={selectAll}
-                  style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1a202c', padding: '6px 12px', background: '#e2e8f0', border: '1px solid #a0aec0', borderRadius: '4px', cursor: 'pointer' }}>
-                  Select all
-                </button>
-                <button type="button" className="pr-ap-select-btn" onClick={selectNone}
-                  style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1a202c', padding: '6px 12px', background: '#e2e8f0', border: '1px solid #a0aec0', borderRadius: '4px', cursor: 'pointer' }}>
-                  Select none
-                </button>
-                <span style={{ fontSize: '0.8rem', color: '#718096', alignSelf: 'center', marginLeft: 'auto' }}>
-                  {selectedCount} of {totalAPs} selected
-                </span>
+              <div className="pr-ap-toolbar">
+                <button type="button" className="pr-ap-toolbar-btn" onClick={selectAll}>Select all</button>
+                <button type="button" className="pr-ap-toolbar-btn" onClick={selectNone}>Select none</button>
+                <span className="pr-ap-toolbar-count">{selectedCount} of {totalAPs} selected</span>
               </div>
-              <ul className="pr-ap-checklist" style={{ listStyle: 'none', padding: 0, margin: 0, border: '1px solid #e2e8f0', borderRadius: '6px', background: '#f7fafc' }}>
+              <ul className="pr-ap-checklist">
                 {apOptions.map(ap => (
-                  <li key={ap.uid} style={{ padding: '10px 12px', borderBottom: '1px solid #e2e8f0' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: 0 }}>
+                  <li key={ap.uid}>
+                    <label>
                       <input
                         type="checkbox"
                         checked={sharedWith.has(ap.uid)}
                         onChange={() => toggleAP(ap.uid)}
-                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                       />
-                      <span style={{ color: '#2d3748' }}>{ap.name || ap.email || 'Unknown'}</span>
+                      <span>{ap.name || ap.email || 'Unknown'}</span>
                     </label>
                   </li>
                 ))}
@@ -235,8 +226,8 @@ export default function PrayerRequestPage({
           )}
 
           {/* Inline action buttons (fallback so they're always reachable on long forms) */}
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
-            <button type="button" className="hj-footer-btn hj-back-btn" onClick={onClose} style={{ flex: 1 }}>
+          <div className="pr-form-actions-inline">
+            <button type="button" className="hj-footer-btn hj-back-btn" onClick={onClose}>
               Back
             </button>
             <button
@@ -244,7 +235,6 @@ export default function PrayerRequestPage({
               className="hj-footer-btn hj-submit-btn"
               onClick={handleSave}
               disabled={saving || !formText.trim() || !formExpiry}
-              style={{ flex: 1 }}
             >
               {saving ? 'Saving...' : editingPR?.id ? 'Update' : 'Submit'}
             </button>
