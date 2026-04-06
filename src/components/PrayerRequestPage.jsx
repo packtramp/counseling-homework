@@ -202,11 +202,11 @@ export default function PrayerRequestPage({
             <>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                 <button type="button" className="pr-ap-select-btn" onClick={selectAll}
-                  style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#edf2f7', border: '1px solid #cbd5e0', borderRadius: '4px', cursor: 'pointer' }}>
+                  style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1a202c', padding: '6px 12px', background: '#e2e8f0', border: '1px solid #a0aec0', borderRadius: '4px', cursor: 'pointer' }}>
                   Select all
                 </button>
                 <button type="button" className="pr-ap-select-btn" onClick={selectNone}
-                  style={{ fontSize: '0.8rem', padding: '4px 10px', background: '#edf2f7', border: '1px solid #cbd5e0', borderRadius: '4px', cursor: 'pointer' }}>
+                  style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1a202c', padding: '6px 12px', background: '#e2e8f0', border: '1px solid #a0aec0', borderRadius: '4px', cursor: 'pointer' }}>
                   Select none
                 </button>
                 <span style={{ fontSize: '0.8rem', color: '#718096', alignSelf: 'center', marginLeft: 'auto' }}>
