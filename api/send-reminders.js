@@ -913,14 +913,16 @@ export default async function handler(req, res) {
       }
     }
 
-    // === AP DAILY SUMMARY (fires at midnight Chicago — checks YESTERDAY's completions) ===
+    // === AP DAILY SUMMARY (fires at 3 AM Chicago — checks YESTERDAY's completions) ===
+    // Shifted from midnight to 3 AM to match the day-rollover rule:
+    // night owls have until 3 AM to complete homework for "yesterday"
     let apSummaryCount = 0;
-    if (currentHour === '00') {
+    if (currentHour === '03') {
       const toChicagoDateAP = (d) => {
         const s = d.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
         return new Date(s);
       };
-      // At midnight, "today" just started — check YESTERDAY's activity instead
+      // At 3 AM, the day has truly ended — check YESTERDAY's activity
       const yesterdayDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const yesterdayChicagoAP = toChicagoDateAP(yesterdayDate);
       const todayKeyAP = yesterdayChicagoAP.toDateString();
