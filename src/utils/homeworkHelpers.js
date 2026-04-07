@@ -13,6 +13,28 @@
 const toMidnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
 /**
+ * Day rollover hour for the "what day does this happen on?" rule.
+ * Completions and "now" are shifted back by this many hours before bucketing
+ * into a calendar day. This means a click at 1:30am gets attributed to the
+ * previous day — night owls keep their streaks.
+ *
+ * Applies ONLY to "what day did this happen?" math. Does NOT apply to:
+ *   - assignment dates (counselor sets explicit calendar dates)
+ *   - vacation start/end dates (explicit calendar dates)
+ *   - reminder time-of-day (user picks a wall-clock time)
+ */
+export const DAY_ROLLOVER_HOUR = 3;
+
+/**
+ * Returns the calendar day a moment "belongs to" under the rollover rule.
+ * (Date at local midnight of that day.) DST-safe: subtracts ms in UTC.
+ */
+export const dayBucket = (d) => {
+  const shifted = new Date(d.getTime() - DAY_ROLLOVER_HOUR * 60 * 60 * 1000);
+  return toMidnight(shifted);
+};
+
+/**
  * Count calendar days between two midnight-normalized dates (DST-safe).
  * Uses Math.round to handle DST offsets where ms difference is 23 or 25 hours
  * instead of exactly 24. Both dates should be at local midnight.
@@ -54,10 +76,10 @@ export const isDateOnVacation = (date, profile) => {
  */
 export const getCompletionsForDay = (completions, date) => {
   if (!completions || !Array.isArray(completions)) return 0;
-  const targetStr = date.toDateString();
+  const targetStr = dayBucket(date).toDateString();
   return completions.filter(c => {
     const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-    return cDate.toDateString() === targetStr;
+    return dayBucket(cDate).toDateString() === targetStr;
   }).length;
 };
 
@@ -107,7 +129,7 @@ export const getWeeklyProgress = (item, now = new Date()) => {
     rawAssigned = now;
   }
   const assignedDate = toMidnight(rawAssigned);
-  const today = toMidnight(now);
+  const today = dayBucket(now);
 
   // Use daysBetween for DST-safe week calculation
   const totalDays = daysBetween(assignedDate, today);
@@ -117,7 +139,7 @@ export const getWeeklyProgress = (item, now = new Date()) => {
   const dailyCounts = {};
   completions.forEach(c => {
     const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-    const cDay = toMidnight(cDate);
+    const cDay = dayBucket(cDate);
     const cDays = daysBetween(assignedDate, cDay);
     const weekNum = Math.floor(cDays / 7);
     if (weekNum === weeksSinceAssigned) {
@@ -162,7 +184,7 @@ export const isItemBehind = (item, now = new Date(), profile) => {
     rawAssigned = now;
   }
   const assignedDate = toMidnight(rawAssigned);
-  const today = toMidnight(now);
+  const today = dayBucket(now);
 
   // Use daysBetween for DST-safe week calculation
   const totalDays = daysBetween(assignedDate, today);
@@ -173,7 +195,7 @@ export const isItemBehind = (item, now = new Date(), profile) => {
   const dailyCounts = {};
   completions.forEach(c => {
     const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-    const cDay = toMidnight(cDate);
+    const cDay = dayBucket(cDate);
     const cDays = daysBetween(assignedDate, cDay);
     const weekNum = Math.floor(cDays / 7);
     if (weekNum === weeksSinceAssigned) {
@@ -228,7 +250,7 @@ export const isRequiredToday = (item, now = new Date()) => {
     rawAssigned = now;
   }
   const assignedDate = toMidnight(rawAssigned);
-  const today = toMidnight(now);
+  const today = dayBucket(now);
 
   // Use daysBetween for DST-safe week calculation
   const totalDays = daysBetween(assignedDate, today);
@@ -239,7 +261,7 @@ export const isRequiredToday = (item, now = new Date()) => {
   const dailyCounts = {};
   completions.forEach(c => {
     const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-    const cDay = toMidnight(cDate);
+    const cDay = dayBucket(cDate);
     const cDays = daysBetween(assignedDate, cDay);
     const weekNum = Math.floor(cDays / 7);
     if (weekNum === weeksSinceAssigned) {
@@ -338,7 +360,7 @@ export const calculateAccountabilityStatus = (homework, profile) => {
   if (isOnVacation(profile)) return 'vacation';
 
   const now = new Date();
-  const today = toMidnight(now);
+  const today = dayBucket(now);
 
   const activeHomework = homework.filter(h => h.status === 'active');
   if (activeHomework.length === 0) return 'neutral';
@@ -376,7 +398,7 @@ export const calculateAccountabilityStatus = (homework, profile) => {
     const dailyCounts = {};
     completions.forEach(c => {
       const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      const cDay = toMidnight(cDate);
+      const cDay = dayBucket(cDate);
       const cDays = daysBetween(assignedDate, cDay);
       const weekNum = Math.floor(cDays / 7);
       if (weekNum === weeksSinceAssigned) {
@@ -473,7 +495,7 @@ export const getDayStatus = (homework, targetDate) => {
     const dailyCounts = {};
     for (const c of (hw.completions || [])) {
       const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      const cDay = toMidnight(cDate);
+      const cDay = dayBucket(cDate);
       if (cDay >= weekStartDate && cDay <= target) {
         const dayKey = cDay.getTime();
         dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
@@ -550,7 +572,7 @@ export const getDayDetails = (homework, targetDate) => {
     const dailyCounts = {};
     for (const c of (hw.completions || [])) {
       const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      const cDay = toMidnight(cDate);
+      const cDay = dayBucket(cDate);
       if (cDay >= weekStartDate && cDay <= target) {
         const dayKey = cDay.getTime();
         dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
@@ -596,7 +618,8 @@ export const calculateAPStreak = (homework, profile) => {
 
   const msPerDay = 24 * 60 * 60 * 1000;
   const now = new Date();
-  const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const todayBucket = dayBucket(now);
+  const todayMs = todayBucket.getTime();
 
   // Collect completion dates from ALL homework (not just active)
   // so cancelled/completed items' past activity still counts
@@ -605,7 +628,7 @@ export const calculateAPStreak = (homework, profile) => {
   for (const hw of homework) {
     for (const c of (hw.completions || [])) {
       const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      const dayMs = new Date(cDate.getFullYear(), cDate.getMonth(), cDate.getDate()).getTime();
+      const dayMs = dayBucket(cDate).getTime();
       daySet.add(dayMs);
       if (dayMs < earliestCompletionMs) earliestCompletionMs = dayMs;
     }
@@ -645,7 +668,7 @@ export const calculateAPStreak = (homework, profile) => {
       const dailyCounts = {};
       for (const c of (hw.completions || [])) {
         const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-        const cDay = toMidnight(cDate);
+        const cDay = dayBucket(cDate);
         if (cDay >= weekStartDate && cDay <= checkDate) {
           const dayKey = cDay.getTime();
           dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
@@ -674,7 +697,7 @@ export const calculateAPStreak = (homework, profile) => {
   // Walk backward from today using date-based subtraction (not ms arithmetic)
   // to avoid DST spring-forward skipping a day when subtracting 86400000ms
   let streak = 0;
-  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayDate = todayBucket;
   let daysBack = 0;
   const maxDaysBack = Math.min(365, Math.ceil((todayMs - earliestCompletionMs) / msPerDay) + 1);
 
@@ -693,7 +716,7 @@ export const calculateAPStreak = (homework, profile) => {
           const autoDateSet = new Set(hw.autoCompletedDates || []);
           for (const c of (hw.completions || [])) {
             const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-            const cDayMs = new Date(cDate.getFullYear(), cDate.getMonth(), cDate.getDate()).getTime();
+            const cDayMs = dayBucket(cDate).getTime();
             if (cDayMs === checkDayMs && !autoDateSet.has(dateStr)) {
               hasRealCompletion = true;
               break;
@@ -747,8 +770,9 @@ export const calculateWeekStreak = (homework) => {
     const completions = hw.completions || [];
     for (const c of completions) {
       const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      // Get the Sunday that starts this calendar week
-      const sunday = new Date(cDate);
+      // Apply day-rollover so a click at 1am gets attributed to yesterday's calendar week
+      const bucket = dayBucket(cDate);
+      const sunday = new Date(bucket);
       sunday.setDate(sunday.getDate() - sunday.getDay());
       const weekKey = `${sunday.getFullYear()}-${sunday.getMonth() + 1}-${sunday.getDate()}`;
       activeWeeks.add(weekKey);
@@ -757,8 +781,8 @@ export const calculateWeekStreak = (homework) => {
 
   if (activeWeeks.size === 0) return 0;
 
-  // Count consecutive weeks backward from current week
-  const now = new Date();
+  // Count consecutive weeks backward from current week (using effective "today")
+  const now = dayBucket(new Date());
   const currentSunday = new Date(now);
   currentSunday.setDate(currentSunday.getDate() - currentSunday.getDay());
   currentSunday.setHours(0, 0, 0, 0);

@@ -7,7 +7,9 @@ import {
   isItemBehind,
   formatPhone,
   parseTime,
-  formatTimeDisplay
+  formatTimeDisplay,
+  dayBucket,
+  DAY_ROLLOVER_HOUR
 } from './homeworkHelpers';
 
 // Helper to create a date at a specific time
@@ -41,6 +43,97 @@ describe('getCompletionsForDay', () => {
       makeDate(2026, 2, 4, 14, 30),
     ];
     expect(getCompletionsForDay(completions, today)).toBe(2);
+  });
+});
+
+describe('dayBucket — 3am rollover', () => {
+  it('exports DAY_ROLLOVER_HOUR = 3', () => {
+    expect(DAY_ROLLOVER_HOUR).toBe(3);
+  });
+
+  it('8pm Apr 6 belongs to Apr 6', () => {
+    const t = makeDate(2026, 4, 6, 20, 0);
+    expect(dayBucket(t).getDate()).toBe(6);
+  });
+
+  it('11:59pm Apr 6 belongs to Apr 6', () => {
+    const t = makeDate(2026, 4, 6, 23, 59);
+    expect(dayBucket(t).getDate()).toBe(6);
+  });
+
+  it('12:00am Apr 7 belongs to Apr 6 (rollover applied)', () => {
+    const t = makeDate(2026, 4, 7, 0, 0);
+    expect(dayBucket(t).getDate()).toBe(6);
+  });
+
+  it('1:30am Apr 7 belongs to Apr 6 (rollover applied)', () => {
+    const t = makeDate(2026, 4, 7, 1, 30);
+    expect(dayBucket(t).getDate()).toBe(6);
+  });
+
+  it('2:59am Apr 7 belongs to Apr 6 (rollover applied)', () => {
+    const t = makeDate(2026, 4, 7, 2, 59);
+    expect(dayBucket(t).getDate()).toBe(6);
+  });
+
+  it('3:00am Apr 7 belongs to Apr 7 (cutoff)', () => {
+    const t = makeDate(2026, 4, 7, 3, 0);
+    expect(dayBucket(t).getDate()).toBe(7);
+  });
+
+  it('3:01am Apr 7 belongs to Apr 7 (just past cutoff)', () => {
+    const t = makeDate(2026, 4, 7, 3, 1);
+    expect(dayBucket(t).getDate()).toBe(7);
+  });
+
+  it('8am Apr 7 belongs to Apr 7', () => {
+    const t = makeDate(2026, 4, 7, 8, 0);
+    expect(dayBucket(t).getDate()).toBe(7);
+  });
+});
+
+describe('getCompletionsForDay — 3am rollover', () => {
+  it('1:30am click counts as previous day', () => {
+    // Click at 1:30am Apr 7 should count toward Apr 6's bucket
+    const apr6 = makeDate(2026, 4, 6, 12, 0); // any time on Apr 6
+    const completions = [makeCompletion(makeDate(2026, 4, 7, 1, 30))];
+    expect(getCompletionsForDay(completions, apr6)).toBe(1);
+  });
+
+  it('4am click counts as same day', () => {
+    const apr7 = makeDate(2026, 4, 7, 12, 0);
+    const completions = [makeCompletion(makeDate(2026, 4, 7, 4, 0))];
+    expect(getCompletionsForDay(completions, apr7)).toBe(1);
+  });
+
+  it('11pm click counts as same day', () => {
+    const apr6 = makeDate(2026, 4, 6, 12, 0);
+    const completions = [makeCompletion(makeDate(2026, 4, 6, 23, 0))];
+    expect(getCompletionsForDay(completions, apr6)).toBe(1);
+  });
+});
+
+describe('isCompletedToday — 3am rollover', () => {
+  it('completed at 1am wall-time still counts as "today" if "now" is also pre-3am', () => {
+    // Roby's case: clicked at 12:16am Apr 7, viewing dashboard at 12:30am Apr 7
+    const item = { completions: [makeCompletion(makeDate(2026, 4, 7, 0, 16))] };
+    const now = makeDate(2026, 4, 7, 0, 30);
+    // Both bucket to Apr 6, so isCompletedToday=true (matches user expectation)
+    expect(isCompletedToday(item, now)).toBe(true);
+  });
+
+  it('completed at 12:16am Apr 7, viewing at 10am Apr 7 (after rollover) → not done today', () => {
+    // Same click, but viewer is in the new day. Click belongs to Apr 6.
+    // "Today" (Apr 7) has no completion → false. Item should be re-doable.
+    const item = { completions: [makeCompletion(makeDate(2026, 4, 7, 0, 16))] };
+    const now = makeDate(2026, 4, 7, 10, 0);
+    expect(isCompletedToday(item, now)).toBe(false);
+  });
+
+  it('completed at 11pm Apr 6, viewing at 10am Apr 7 → not done today', () => {
+    const item = { completions: [makeCompletion(makeDate(2026, 4, 6, 23, 0))] };
+    const now = makeDate(2026, 4, 7, 10, 0);
+    expect(isCompletedToday(item, now)).toBe(false);
   });
 });
 
