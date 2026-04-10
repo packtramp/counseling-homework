@@ -168,7 +168,7 @@ export const getWeeklyProgress = (item, now = new Date()) => {
  * @returns {boolean} True if behind
  */
 export const isItemBehind = (item, now = new Date(), profile) => {
-  if (item.status === 'cancelled') return false;
+  if (item.status === 'cancelled' || item.status === 'expired') return false;
   if (isOnVacation(profile)) return false;
 
   const completions = item.completions || [];
@@ -233,7 +233,7 @@ export const isItemBehind = (item, now = new Date(), profile) => {
  * @returns {boolean} True if skipping today means can't catch up
  */
 export const isRequiredToday = (item, now = new Date()) => {
-  if (item.status === 'cancelled') return false;
+  if (item.status === 'cancelled' || item.status === 'expired') return false;
   if (isItemBehind(item, now)) return false;
   if (isCompletedToday(item, now)) return false;
 
@@ -460,7 +460,7 @@ export const getDayStatus = (homework, targetDate) => {
   const target = toMidnight(targetDate);
 
   const activeOnDate = homework.filter(h => {
-    if (h.status === 'cancelled') return false;
+    if (h.status === 'cancelled' || h.status === 'expired') return false;
     let assignedDate;
     if (h.assignedDate?.toDate) assignedDate = h.assignedDate.toDate();
     else if (h.assignedDate) assignedDate = new Date(h.assignedDate);
@@ -539,7 +539,7 @@ export const getDayDetails = (homework, targetDate) => {
   const target = toMidnight(targetDate);
 
   const activeOnDate = homework.filter(h => {
-    if (h.status === 'cancelled') return false;
+    if (h.status === 'cancelled' || h.status === 'expired') return false;
     let rawAssigned;
     if (h.assignedDate?.toDate) rawAssigned = h.assignedDate.toDate();
     else if (h.assignedDate) rawAssigned = new Date(h.assignedDate);

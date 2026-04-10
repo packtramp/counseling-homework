@@ -100,7 +100,7 @@ export default async function handler(req, res) {
 
       for (const hwDoc of homeworkSnap.docs) {
         const hw = hwDoc.data();
-        if (hw.status === 'cancelled') continue;
+        if (hw.status === 'cancelled' || hw.status === 'expired') continue;
 
         const completions = hw.completions || [];
 
@@ -159,6 +159,48 @@ export default async function handler(req, res) {
 
     console.log(`Vacation auto-complete: ${vacationUsersProcessed} users, ${vacationItemsAutoCompleted} items`);
 
+    // ═══ PHASE 1.5: AUTO-CANCEL EXPIRED HOMEWORK ═══
+    // Checks expiresAt timestamp (set by ThinkList/Journal save).
+    // Also backfills expiresAt for legacy homework that has durationWeeks but no expiresAt.
+    let expiredCancelled = 0;
+    let expiresAtBackfilled = 0;
+    const allCounselorsSnap = await db.collection('counselors').get();
+    for (const cDoc of allCounselorsSnap.docs) {
+      const ceesSnap = await db.collection(`counselors/${cDoc.id}/counselees`).get();
+      for (const ceeDoc of ceesSnap.docs) {
+        const hwSnap = await db.collection(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/homework`)
+          .where('status', '==', 'active').get();
+        for (const hwDoc of hwSnap.docs) {
+          const hw = hwDoc.data();
+          const hwRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/homework/${hwDoc.id}`);
+
+          // Backfill: has durationWeeks but no expiresAt — calculate from assignedDate
+          if (hw.durationWeeks && !hw.expiresAt) {
+            const assigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+            const expiresAt = new Date(assigned.getTime() + hw.durationWeeks * 7 * 24 * 60 * 60 * 1000);
+            await hwRef.update({ expiresAt: admin.firestore.Timestamp.fromDate(expiresAt) });
+            expiresAtBackfilled++;
+            // Check if already expired
+            if (expiresAt <= now) {
+              await hwRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+              expiredCancelled++;
+              continue;
+            }
+          }
+
+          // Check expiresAt
+          if (hw.expiresAt) {
+            const expDate = hw.expiresAt.toDate ? hw.expiresAt.toDate() : new Date(hw.expiresAt);
+            if (expDate <= now) {
+              await hwRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+              expiredCancelled++;
+            }
+          }
+        }
+      }
+    }
+    console.log(`Expired homework: ${expiredCancelled} cancelled, ${expiresAtBackfilled} backfilled`);
+
     // ═══ PHASE 2: BEHIND COUNT + STREAK UPDATES ═══
     // Get all counselors
     const counselorsSnap = await db.collection('counselors').get();
@@ -205,7 +247,7 @@ export default async function handler(req, res) {
 
         for (const hwDoc of homeworkSnap.docs) {
           const hw = hwDoc.data();
-          if (hw.status === 'cancelled') continue;
+          if (hw.status === 'cancelled' || hw.status === 'expired') continue;
 
           const completions = hw.completions || [];
           const weeklyTarget = hw.weeklyTarget || 7;
@@ -281,7 +323,9 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
       counseleesProcessed,
       behindUpdates,
-      redDaysLogged
+      redDaysLogged,
+      expiredCancelled,
+      expiresAtBackfilled
     });
   } catch (error) {
     console.error('Midnight cron error:', error);

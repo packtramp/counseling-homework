@@ -130,7 +130,7 @@ export default function HomeworkTile({
 
   // Helper: Check if weekly target is fully met for this period
   const isWeeklyComplete = (item) => {
-    if (item.status === 'cancelled') return false;
+    if (item.status === 'cancelled' || item.status === 'expired') return false;
     const progress = getWeeklyProgress(item);
     return progress.current >= progress.target;
   };
@@ -195,10 +195,10 @@ export default function HomeworkTile({
   // Weekly-complete items stay in Current tab so overachievers can keep checking off
   const activeHomework = homework.filter(h =>
     (!h.status || h.status === 'active') &&
-    (isCounselor ? (h.status !== 'cancelled' && h.status !== 'completed' && !isCompletedToday(h)) : !isCompletedToday(h))
+    (isCounselor ? (h.status !== 'cancelled' && h.status !== 'expired' && h.status !== 'completed' && !isCompletedToday(h)) : !isCompletedToday(h))
   );
   const completedHomework = homework.filter(h =>
-    h.status === 'cancelled' || h.status === 'completed' || isCompletedToday(h)
+    h.status === 'cancelled' || h.status === 'expired' || h.status === 'completed' || isCompletedToday(h)
   );
 
   // Get change notes for counselee edits
@@ -613,7 +613,7 @@ export default function HomeworkTile({
               {completedHomework.map(item => {
                 const progress = getWeeklyProgress(item);
                 const lastDate = getLastCompletionDate(item);
-                const isCancelled = item.status === 'cancelled';
+                const isCancelled = item.status === 'cancelled' || item.status === 'expired';
                 const canUncheck = !isCancelled && onUncheck;
                 const isEditing = editingHomework?.id === item.id;
                 const isBehind = isItemBehind(item);

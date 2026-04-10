@@ -328,6 +328,9 @@ export default function JournalingPage({
           weeklyTarget: formData.timesPerWeek,
           dailyCap: 1, // Journaling has hardcoded daily cap of 1
           durationWeeks: formData.durationWeeks,
+          expiresAt: formData.durationWeeks
+            ? Timestamp.fromDate(new Date(Date.now() + formData.durationWeeks * 7 * 24 * 60 * 60 * 1000))
+            : null,
           linkedJournalingId: journalId,
           updatedAt: serverTimestamp()
         };

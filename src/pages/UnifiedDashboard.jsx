@@ -439,7 +439,7 @@ export default function UnifiedDashboard() {
             const status = calculateAccountabilityStatus(homework, profile);
             const liveStreak = calculateAPStreak(homework, profile);
             const liveWeekStreak = calculateWeekStreak(homework);
-            const behindCount = homework.filter(h => h.status !== 'cancelled' && isItemBehind(h, new Date(), profile)).length;
+            const behindCount = homework.filter(h => h.status !== 'cancelled' && h.status !== 'expired' && isItemBehind(h, new Date(), profile)).length;
             setCounseleeLiveStatus(prev => ({
               ...prev,
               [counselee.id]: { status, streak: liveStreak, weekStreak: liveWeekStreak, behindCount }

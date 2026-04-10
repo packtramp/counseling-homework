@@ -125,7 +125,7 @@ export default function CounselorDashboard() {
           const hwQuery = query(collection(db, `counselors/${user.uid}/counselees/${counselee.id}/homework`));
           const snapshot = await getDocs(hwQuery);
           const hwList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          const behindCount = hwList.filter(h => h.status !== 'cancelled' && isItemBehind(h)).length;
+          const behindCount = hwList.filter(h => h.status !== 'cancelled' && h.status !== 'expired' && isItemBehind(h)).length;
           status[counselee.id] = behindCount;
         } catch (err) {
           console.error('Error fetching homework for behind status:', err);

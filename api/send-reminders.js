@@ -607,7 +607,7 @@ export default async function handler(req, res) {
 
         for (const doc of homeworkSnap.docs) {
           const hw = doc.data();
-          if (hw.status === 'cancelled') continue;
+          if (hw.status === 'cancelled' || hw.status === 'expired') continue;
 
           const weeklyTarget = hw.weeklyTarget || 7;
           const dailyCap = hw.dailyCap || 999;  // Default to no cap
@@ -842,7 +842,7 @@ export default async function handler(req, res) {
 
           for (const hwDoc of hwSnap.docs) {
             const hw = hwDoc.data();
-            if (hw.status === 'cancelled') continue;
+            if (hw.status === 'cancelled' || hw.status === 'expired') continue;
 
             const weeklyTarget = hw.weeklyTarget || 7;
             const dailyCap = hw.dailyCap || 999;
@@ -1019,7 +1019,7 @@ export default async function handler(req, res) {
 
           for (const hwDoc of hwSnap.docs) {
             const hw = hwDoc.data();
-            if (hw.status === 'cancelled') continue;
+            if (hw.status === 'cancelled' || hw.status === 'expired') continue;
 
             totalActiveItems++;
 

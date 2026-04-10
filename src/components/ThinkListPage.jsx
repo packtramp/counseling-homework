@@ -360,6 +360,9 @@ export default function ThinkListPage({
           weeklyTarget,
           dailyCap: formData.timesPerDay,
           durationWeeks: formData.durationWeeks,
+          expiresAt: formData.durationWeeks
+            ? Timestamp.fromDate(new Date(Date.now() + formData.durationWeeks * 7 * 24 * 60 * 60 * 1000))
+            : null,
           linkedThinkListId: thinkListId,
           updatedAt: serverTimestamp()
         };
