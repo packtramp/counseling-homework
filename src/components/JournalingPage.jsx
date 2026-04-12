@@ -123,6 +123,9 @@ export default function JournalingPage({
         content: formData.content,
         timesPerWeek: formData.timesPerWeek,
         durationWeeks: formData.durationWeeks,
+        expiresAt: formData.durationWeeks
+          ? Timestamp.fromDate(new Date(Date.now() + formData.durationWeeks * 7 * 24 * 60 * 60 * 1000))
+          : null,
         status: 'active',
         updatedAt: serverTimestamp()
       };
@@ -255,6 +258,9 @@ export default function JournalingPage({
         content: formData.content,
         timesPerWeek: formData.timesPerWeek,
         durationWeeks: formData.durationWeeks,
+        expiresAt: formData.durationWeeks
+          ? Timestamp.fromDate(new Date(Date.now() + formData.durationWeeks * 7 * 24 * 60 * 60 * 1000))
+          : null,
         status: 'active',
         updatedAt: serverTimestamp()
       };

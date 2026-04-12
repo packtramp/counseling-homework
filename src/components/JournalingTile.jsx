@@ -14,6 +14,18 @@ export default function JournalingTile({
   onAdd
 }) {
   const canEdit = role === 'counselee' || role === 'counselor'; // Accountability is read-only
+
+  // Filter out expired journals (by status or expiresAt timestamp)
+  const isExpired = (j) => {
+    if (j.status === 'expired') return true;
+    if (j.expiresAt) {
+      const exp = j.expiresAt.toDate ? j.expiresAt.toDate() : new Date(j.expiresAt);
+      return exp <= new Date();
+    }
+    return false;
+  };
+  const activeJournals = journals.filter(j => !isExpired(j));
+
   const formatDate = (timestamp) => {
     if (!timestamp) return 'No date';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -24,16 +36,16 @@ export default function JournalingTile({
     <div className="journaling-tile">
       <div className="jn-tile-header">
         <span className="jn-tile-title">
-          Journaling ({journals.length})
+          Journaling ({activeJournals.length})
         </span>
       </div>
 
       <div className="jn-tile-content">
-        {journals.length === 0 ? (
+        {activeJournals.length === 0 ? (
           <p className="empty-list">No journal entries yet.</p>
         ) : (
           <ul className="journal-list">
-            {journals.map(journal => (
+            {activeJournals.map(journal => (
               <li
                 key={journal.id}
                 className="journal-item"
