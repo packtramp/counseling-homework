@@ -184,15 +184,19 @@ export default async function handler(req, res) {
             if (expiresAt <= now) {
               await hwRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
               expiredCancelled++;
-              // Also expire the linked Think List or Journal document
-              if (hw.linkedThinkListId) {
-                const tlRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
-                await tlRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-              }
-              if (hw.linkedJournalingId) {
-                const jnRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/journals/${hw.linkedJournalingId}`);
-                await jnRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-              }
+              // Also expire the linked Think List or Journal document (safe — skip if doc missing)
+              try {
+                if (hw.linkedThinkListId) {
+                  const tlRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
+                  const tlSnap = await tlRef.get();
+                  if (tlSnap.exists) await tlRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+                }
+                if (hw.linkedJournalingId) {
+                  const jnRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/journals/${hw.linkedJournalingId}`);
+                  const jnSnap = await jnRef.get();
+                  if (jnSnap.exists) await jnRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+                }
+              } catch (linkErr) { console.warn('Failed to expire linked doc:', linkErr.message); }
               continue;
             }
           }
@@ -203,15 +207,19 @@ export default async function handler(req, res) {
             if (expDate <= now) {
               await hwRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
               expiredCancelled++;
-              // Also expire the linked Think List or Journal document
-              if (hw.linkedThinkListId) {
-                const tlRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
-                await tlRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-              }
-              if (hw.linkedJournalingId) {
-                const jnRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/journals/${hw.linkedJournalingId}`);
-                await jnRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-              }
+              // Also expire the linked Think List or Journal document (safe — skip if doc missing)
+              try {
+                if (hw.linkedThinkListId) {
+                  const tlRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
+                  const tlSnap = await tlRef.get();
+                  if (tlSnap.exists) await tlRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+                }
+                if (hw.linkedJournalingId) {
+                  const jnRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/journals/${hw.linkedJournalingId}`);
+                  const jnSnap = await jnRef.get();
+                  if (jnSnap.exists) await jnRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+                }
+              } catch (linkErr) { console.warn('Failed to expire linked doc:', linkErr.message); }
             }
           }
         }
