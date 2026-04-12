@@ -15,9 +15,17 @@ export default function ThinkListsTile({
 }) {
   const canEdit = role === 'counselee' || role === 'counselor'; // Accountability is read-only
 
-  // Separate drafts from submitted think lists
+  // Separate drafts from submitted think lists (exclude expired — by status OR by expiresAt timestamp)
+  const isExpired = (t) => {
+    if (t.status === 'expired') return true;
+    if (t.expiresAt) {
+      const exp = t.expiresAt.toDate ? t.expiresAt.toDate() : new Date(t.expiresAt);
+      return exp <= new Date();
+    }
+    return false;
+  };
   const drafts = thinkLists.filter(t => t.status === 'draft');
-  const submitted = thinkLists.filter(t => t.status !== 'draft');
+  const submitted = thinkLists.filter(t => t.status !== 'draft' && !isExpired(t));
 
   const formatDate = (timestamp) => {
     if (!timestamp) return 'No date';

@@ -331,6 +331,9 @@ export default function ThinkListPage({
         ...formData,
         title: formData.title || 'Untitled Think List',
         status: 'active',
+        expiresAt: formData.durationWeeks
+          ? Timestamp.fromDate(new Date(Date.now() + formData.durationWeeks * 7 * 24 * 60 * 60 * 1000))
+          : null,
         submittedAt: serverTimestamp(),
         updatedBy: role
       };

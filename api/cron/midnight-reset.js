@@ -184,6 +184,11 @@ export default async function handler(req, res) {
             if (expiresAt <= now) {
               await hwRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
               expiredCancelled++;
+              // Also expire the linked Think List document
+              if (hw.linkedThinkListId) {
+                const tlRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
+                await tlRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+              }
               continue;
             }
           }
@@ -194,6 +199,11 @@ export default async function handler(req, res) {
             if (expDate <= now) {
               await hwRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
               expiredCancelled++;
+              // Also expire the linked Think List document
+              if (hw.linkedThinkListId) {
+                const tlRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
+                await tlRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+              }
             }
           }
         }
