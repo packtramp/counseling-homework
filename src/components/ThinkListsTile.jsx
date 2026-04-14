@@ -15,11 +15,18 @@ export default function ThinkListsTile({
 }) {
   const canEdit = role === 'counselee' || role === 'counselor'; // Accountability is read-only
 
-  // Separate drafts from submitted think lists (exclude expired — by status OR by expiresAt timestamp)
+  // Separate drafts from submitted think lists (exclude expired).
+  // Checks: status === 'expired' OR expiresAt past OR (legacy) submittedAt + durationWeeks past.
+  // Legacy fallback covers docs submitted before the expiresAt field was written.
   const isExpired = (t) => {
     if (t.status === 'expired') return true;
     if (t.expiresAt) {
       const exp = t.expiresAt.toDate ? t.expiresAt.toDate() : new Date(t.expiresAt);
+      return exp <= new Date();
+    }
+    if (t.durationWeeks && t.submittedAt) {
+      const submitted = t.submittedAt.toDate ? t.submittedAt.toDate() : new Date(t.submittedAt);
+      const exp = new Date(submitted.getTime() + t.durationWeeks * 7 * 24 * 60 * 60 * 1000);
       return exp <= new Date();
     }
     return false;

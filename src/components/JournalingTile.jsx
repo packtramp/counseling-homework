@@ -15,11 +15,17 @@ export default function JournalingTile({
 }) {
   const canEdit = role === 'counselee' || role === 'counselor'; // Accountability is read-only
 
-  // Filter out expired journals (by status or expiresAt timestamp)
+  // Filter out expired journals. Legacy fallback: compute from submittedAt + durationWeeks
+  // when expiresAt wasn't written (pre-fix docs).
   const isExpired = (j) => {
     if (j.status === 'expired') return true;
     if (j.expiresAt) {
       const exp = j.expiresAt.toDate ? j.expiresAt.toDate() : new Date(j.expiresAt);
+      return exp <= new Date();
+    }
+    if (j.durationWeeks && j.submittedAt) {
+      const submitted = j.submittedAt.toDate ? j.submittedAt.toDate() : new Date(j.submittedAt);
+      const exp = new Date(submitted.getTime() + j.durationWeeks * 7 * 24 * 60 * 60 * 1000);
       return exp <= new Date();
     }
     return false;

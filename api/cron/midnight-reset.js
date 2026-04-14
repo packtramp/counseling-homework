@@ -164,15 +164,17 @@ export default async function handler(req, res) {
     // Also backfills expiresAt for legacy homework that has durationWeeks but no expiresAt.
     let expiredCancelled = 0;
     let expiresAtBackfilled = 0;
-    const allCounselorsSnap = await db.collection('counselors').get();
-    for (const cDoc of allCounselorsSnap.docs) {
-      const ceesSnap = await db.collection(`counselors/${cDoc.id}/counselees`).get();
+    // NOTE: counselor docs are phantom parents (subcollections only, no document body).
+    // Use listDocuments() — .get() on this collection returns zero documents.
+    const allCounselorRefs = await db.collection('counselors').listDocuments();
+    for (const cRef of allCounselorRefs) {
+      const ceesSnap = await db.collection(`counselors/${cRef.id}/counselees`).get();
       for (const ceeDoc of ceesSnap.docs) {
-        const hwSnap = await db.collection(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/homework`)
+        const hwSnap = await db.collection(`counselors/${cRef.id}/counselees/${ceeDoc.id}/homework`)
           .where('status', '==', 'active').get();
         for (const hwDoc of hwSnap.docs) {
           const hw = hwDoc.data();
-          const hwRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/homework/${hwDoc.id}`);
+          const hwRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/homework/${hwDoc.id}`);
 
           // Backfill: has durationWeeks but no expiresAt — calculate from assignedDate
           if (hw.durationWeeks && !hw.expiresAt) {
@@ -187,12 +189,12 @@ export default async function handler(req, res) {
               // Also expire the linked Think List or Journal document (safe — skip if doc missing)
               try {
                 if (hw.linkedThinkListId) {
-                  const tlRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
+                  const tlRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
                   const tlSnap = await tlRef.get();
                   if (tlSnap.exists) await tlRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
                 }
                 if (hw.linkedJournalingId) {
-                  const jnRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/journals/${hw.linkedJournalingId}`);
+                  const jnRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/journals/${hw.linkedJournalingId}`);
                   const jnSnap = await jnRef.get();
                   if (jnSnap.exists) await jnRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
                 }
@@ -210,12 +212,12 @@ export default async function handler(req, res) {
               // Also expire the linked Think List or Journal document (safe — skip if doc missing)
               try {
                 if (hw.linkedThinkListId) {
-                  const tlRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
+                  const tlRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
                   const tlSnap = await tlRef.get();
                   if (tlSnap.exists) await tlRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
                 }
                 if (hw.linkedJournalingId) {
-                  const jnRef = db.doc(`counselors/${cDoc.id}/counselees/${ceeDoc.id}/journals/${hw.linkedJournalingId}`);
+                  const jnRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/journals/${hw.linkedJournalingId}`);
                   const jnSnap = await jnRef.get();
                   if (jnSnap.exists) await jnRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
                 }
@@ -228,14 +230,14 @@ export default async function handler(req, res) {
     console.log(`Expired homework: ${expiredCancelled} cancelled, ${expiresAtBackfilled} backfilled`);
 
     // ═══ PHASE 2: BEHIND COUNT + STREAK UPDATES ═══
-    // Get all counselors
-    const counselorsSnap = await db.collection('counselors').get();
+    // Counselor docs are phantom parents — must use listDocuments().
+    const counselorRefs = await db.collection('counselors').listDocuments();
     let counseleesProcessed = 0;
     let behindUpdates = 0;
     let redDaysLogged = 0;
 
-    for (const counselorDoc of counselorsSnap.docs) {
-      const counselorId = counselorDoc.id;
+    for (const counselorRef of counselorRefs) {
+      const counselorId = counselorRef.id;
 
       // Get all counselees for this counselor
       const counseleesSnap = await db.collection(`counselors/${counselorId}/counselees`).get();
