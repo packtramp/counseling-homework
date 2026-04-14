@@ -124,9 +124,10 @@ export default async function handler(req, res) {
         });
       }
 
-      const counselorsSnap = await db.collection('counselors').get();
-      for (const counselorDoc of counselorsSnap.docs) {
-        const counseleesSnap = await db.collection(`counselors/${counselorDoc.id}/counselees`).get();
+      // Counselor docs are phantom parents — use listDocuments().
+      const counselorRefs = await db.collection('counselors').listDocuments();
+      for (const counselorRef of counselorRefs) {
+        const counseleesSnap = await db.collection(`counselors/${counselorRef.id}/counselees`).get();
         for (const cDoc of counseleesSnap.docs) {
           const data = cDoc.data();
           const schedule = data.reminderSchedule;
@@ -145,7 +146,7 @@ export default async function handler(req, res) {
           }
           results.counselees.push({
             name: data.name || cDoc.id,
-            counselorId: counselorDoc.id,
+            counselorId: counselorRef.id,
             isSelf: !!data.isSelf,
             status: missing.length === 0 ? 'OK' : 'MISSING',
             missing,
@@ -198,17 +199,17 @@ export default async function handler(req, res) {
         }
       }
 
-      // Fix all counselor/counselee subcollection docs
-      const counselorsSnap = await db.collection('counselors').get();
-      for (const counselorDoc of counselorsSnap.docs) {
-        const counseleesSnap = await db.collection(`counselors/${counselorDoc.id}/counselees`).get();
+      // Fix all counselor/counselee subcollection docs. Counselor docs are phantom parents — use listDocuments().
+      const counselorRefs = await db.collection('counselors').listDocuments();
+      for (const counselorRef of counselorRefs) {
+        const counseleesSnap = await db.collection(`counselors/${counselorRef.id}/counselees`).get();
         for (const cDoc of counseleesSnap.docs) {
           const data = cDoc.data();
           const schedule = data.reminderSchedule;
           if (!schedule) {
             await cDoc.ref.update({ reminderSchedule: defaultSchedule });
             results.counseleesFixed++;
-            results.details.push(`counselors/${counselorDoc.id}/counselees/${cDoc.id} (${data.name}) - no schedule, added full default`);
+            results.details.push(`counselors/${counselorRef.id}/counselees/${cDoc.id} (${data.name}) - no schedule, added full default`);
           } else {
             let needsUpdate = false;
             const updated = { ...schedule };
@@ -224,7 +225,7 @@ export default async function handler(req, res) {
             if (needsUpdate) {
               await cDoc.ref.update({ reminderSchedule: updated });
               results.counseleesFixed++;
-              results.details.push(`counselors/${counselorDoc.id}/counselees/${cDoc.id} (${data.name}) - filled missing slots`);
+              results.details.push(`counselors/${counselorRef.id}/counselees/${cDoc.id} (${data.name}) - filled missing slots`);
             }
           }
         }
