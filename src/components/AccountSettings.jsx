@@ -32,7 +32,7 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
 
   // Reminder preferences (counselee only)
   const [phone, setPhone] = useState(userProfile?.phone || '');
-  const [smsReminders, setSmsReminders] = useState(userProfile?.smsReminders ?? !!userProfile?.phone);
+  const [smsReminders, setSmsReminders] = useState(userProfile?.smsReminders ?? false);
   const [emailReminders, setEmailReminders] = useState(userProfile?.emailReminders ?? true);
 
   // Per-day reminder schedule with 3 slots each
@@ -57,7 +57,7 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
   useEffect(() => {
     setName(userProfile?.name || '');
     setPhone(userProfile?.phone || '');
-    setSmsReminders(userProfile?.smsReminders ?? !!userProfile?.phone);
+    setSmsReminders(userProfile?.smsReminders ?? false);
     setEmailReminders(userProfile?.emailReminders ?? true);
     setReminderSchedule(userProfile?.reminderSchedule || defaultSchedule);
     setSessionTemplate(userProfile?.sessionTemplate || '');
@@ -377,9 +377,8 @@ export default function AccountSettings({ isOpen, onClose, userProfile, onUpdate
                     checked={smsReminders}
                     onChange={e => setSmsReminders(e.target.checked)}
                   />
-                  <span>SMS reminders</span>
+                  <span>I agree to receive reminder messages from Counseling Homework via text. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe or HELP for assistance at any time.</span>
                 </label>
-                <small className="form-hint">Reply STOP to unsubscribe. Text START to (256) 666-5595 to re-enable.</small>
               </div>
 
               {smsReminders && (
