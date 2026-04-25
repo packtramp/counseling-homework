@@ -89,7 +89,7 @@ export default function SettingsPage() {
         setName(data.name || '');
         setEmail(auth.currentUser?.email || '');
         setPhone(data.phone || '');
-        setSmsReminders(data.smsReminders ?? !!data.phone);
+        setSmsReminders(data.smsReminders ?? false);
         setEmailReminders(data.emailReminders ?? true);
         setReminderSchedule(data.reminderSchedule || defaultSchedule);
         setSessionTemplate(data.sessionTemplate || '');
@@ -372,9 +372,8 @@ export default function SettingsPage() {
             <div className="form-group checkbox-group">
               <label className="checkbox-label">
                 <input type="checkbox" checked={smsReminders} onChange={e => setSmsReminders(e.target.checked)} />
-                <span>SMS reminders</span>
+                <span>I agree to receive reminder messages from Counseling Homework via text. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe or HELP for assistance at any time.</span>
               </label>
-              <small className="form-hint">Reply STOP to unsubscribe. Text START to (256) 666-5595 to re-enable.</small>
             </div>
             {smsReminders && (
               <div className="form-group">
