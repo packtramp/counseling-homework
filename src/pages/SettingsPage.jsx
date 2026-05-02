@@ -998,6 +998,7 @@ export default function SettingsPage() {
               <span className="settings-row-content">
                 <span className="settings-row-label">Counseling Homework</span>
                 <span className="settings-row-detail">v{APP_VERSION} Beta</span>
+                <span className="settings-row-detail">A division of Dorsett Group Realty</span>
               </span>
             </div>
           </div>
