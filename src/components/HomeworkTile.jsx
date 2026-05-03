@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import RichTextEditor from './RichTextEditor';
-import { getCompletionsForDay, isCompletedToday, getTodayProgress, getWeeklyProgress, isItemBehind, isRequiredToday } from '../utils/homeworkHelpers';
+import { getCompletionsForDay, isCompletedToday, getTodayProgress, getWeeklyProgress, isItemBehind, isRequiredToday, dayBucket } from '../utils/homeworkHelpers';
+
+const hasYesterdayCompletion = (item) => {
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  return getCompletionsForDay(item.completions || [], y) > 0;
+};
 
 /**
  * Reusable Homework Tile with Current/Done tabs
@@ -36,7 +42,8 @@ export default function HomeworkTile({
   onSessionFilterChange,
   completingId = null,
   onOpenThinkList,
-  onOpenJournal
+  onOpenJournal,
+  onForgotYesterday
 }) {
   const [homeworkTab, setHomeworkTab] = useState('current');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -148,25 +155,27 @@ export default function HomeworkTile({
     } else {
       return null;
     }
-    // Normalize to midnight so week boundaries align with calendar days
+    // assignedDate is a counselor-set date — keep raw calendar (per COUNTERS.md philosophy)
     const assignedDate = new Date(rawAssigned.getFullYear(), rawAssigned.getMonth(), rawAssigned.getDate());
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // today uses dayBucket so late-night work counts toward the user's logical "today"
+    const today = dayBucket(new Date());
     const msPerDay = 24 * 60 * 60 * 1000;
-    const msPerWeek = 7 * msPerDay;
-    const totalWeeks = Math.floor((today - assignedDate) / msPerWeek);
+    // Day-count division (DST-safe) — avoid msPerWeek arithmetic, which drifts 1hr across DST transitions
+    const totalWeeks = Math.floor(Math.round((today - assignedDate) / msPerDay) / 7);
     if (totalWeeks === 0) return null; // Still in first week
 
     const weekResults = [];
     for (let w = 0; w < totalWeeks; w++) {
-      const weekStartMs = assignedDate.getTime() + w * msPerWeek;
-      const weekEndMs = assignedDate.getTime() + (w + 1) * msPerWeek;
+      // Calendar-day arithmetic for week boundaries — DST-safe (msPerWeek is not)
+      const weekStartMs = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + w * 7).getTime();
+      const weekEndMs = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + (w + 1) * 7).getTime();
       const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
       const effectiveTarget = w === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
       const dailyBuckets = {};
       for (const c of completions) {
         const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-        const cMs = new Date(cDate.getFullYear(), cDate.getMonth(), cDate.getDate()).getTime();
+        // dayBucket applies the 3 AM rollover so late-night completions count for the prior calendar day
+        const cMs = dayBucket(cDate).getTime();
         if (cMs >= weekStartMs && cMs < weekEndMs) {
           dailyBuckets[cMs] = (dailyBuckets[cMs] || 0) + 1;
         }
@@ -600,6 +609,15 @@ export default function HomeworkTile({
                         </span>
                       )}
                     </span>
+                    {onForgotYesterday && !isLinkedItem && !hasYesterdayCompletion(item) && (
+                      <button
+                        type="button"
+                        className="forgot-yesterday-btn"
+                        onClick={(e) => { e.stopPropagation(); onForgotYesterday(item); }}
+                      >
+                        I forgot yesterday
+                      </button>
+                    )}
                   </div>
                 );
               })}
