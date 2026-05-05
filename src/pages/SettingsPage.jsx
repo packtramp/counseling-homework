@@ -374,14 +374,15 @@ export default function SettingsPage() {
                 <input type="checkbox" checked={smsReminders} onChange={e => setSmsReminders(e.target.checked)} />
                 <span>I agree to receive reminder messages from Counseling Homework via text. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe or HELP for assistance at any time.</span>
               </label>
+              <small className="form-hint" style={{ marginTop: '6px', display: 'block', fontWeight: 600 }}>
+                Reminders only — we do not send marketing or promotional messages.
+              </small>
             </div>
-            {smsReminders && (
-              <div className="form-group">
-                <label>Phone Number</label>
-                <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 123-4567" required />
-                <small className="form-hint">Standard message rates may apply.</small>
-              </div>
-            )}
+            <div className="form-group">
+              <label>Phone Number</label>
+              <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 123-4567" required={smsReminders} />
+              <small className="form-hint">{smsReminders ? 'Standard message rates may apply.' : 'Required only if SMS reminders are enabled.'}</small>
+            </div>
             <div className="form-group reminder-schedule">
               <label>Weekly Schedule</label>
               <small className="form-hint" style={{ marginBottom: '8px', display: 'block' }}>
