@@ -50,7 +50,7 @@ export default function PrivacyPolicy() {
       <ul>
         <li><strong>To provide the Service:</strong> Displaying your homework, tracking progress, calculating streaks</li>
         <li><strong>To send email reminders:</strong> Homework reminders at your chosen times, daily summaries for counselors and accountability partners</li>
-        <li><strong>To send SMS reminders:</strong> If you opt in to SMS notifications in your Account Settings, we send text message reminders to your phone number at times you configure. SMS is off by default and requires your explicit opt-in. You can opt out at any time by replying STOP to any message or toggling SMS off in Account Settings</li>
+        <li><strong>To send SMS reminders:</strong> If you opt in to SMS notifications in your Account Settings, we send text message reminders to your phone number at times you configure. SMS is off by default and requires your explicit opt-in. You can opt out at any time by replying STOP to any message or toggling SMS off in Account Settings. <strong>SMS messages are reminders only — we do not send marketing, promotional, or sales messages of any kind.</strong></li>
         <li><strong>To send account emails:</strong> Signup confirmation, email verification, password resets, accountability partner invitations</li>
         <li><strong>To enable accountability:</strong> Sharing homework status with your approved accountability partners (mutual consent required)</li>
         <li><strong>To support counseling:</strong> Allowing your assigned counselor to view your homework progress, journals, and Think Lists</li>

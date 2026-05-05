@@ -71,6 +71,9 @@ export default function TermsOfService() {
         SMS reminders are <strong>off by default</strong>. You may opt in to receive SMS homework reminders by navigating to Account Settings and toggling "SMS Reminders" on and providing your phone number. If you opt in, you consent to receive up to 3 automated text messages per day reminding you of incomplete homework items. Message frequency depends on your reminder schedule and homework status. Message and data rates may apply.
       </p>
       <p>
+        <strong>Reminders only — no marketing.</strong> All SMS messages from this Service are transactional homework reminders. We do not send marketing, promotional, or sales messages of any kind, and we will not share your phone number with third parties for marketing purposes.
+      </p>
+      <p>
         <strong>To opt out of SMS at any time:</strong> reply STOP to any message, or toggle SMS Reminders off in your Account Settings. Reply HELP for support. Opting out of SMS does not affect email reminders or your account.
       </p>
 

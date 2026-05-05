@@ -22,6 +22,9 @@ export default function SmsOptIn() {
       <p>
         Counseling Homework is a web application for tracking biblical counseling homework. Counselors enroll counselees during in-person counseling sessions. After account creation, counselees log into <strong>counselinghomework.com</strong> and can optionally enable SMS reminders.
       </p>
+      <p style={{ background: '#f7fafc', borderLeft: '4px solid #3182ce', padding: '12px 16px', margin: '16px 0' }}>
+        <strong>Reminders only — no marketing.</strong> All SMS messages sent through this program are transactional homework reminders. We do not send marketing, promotional, or sales messages of any kind.
+      </p>
 
       <h3>Step-by-Step Opt-In Process</h3>
       <ol style={{ lineHeight: 2 }}>
