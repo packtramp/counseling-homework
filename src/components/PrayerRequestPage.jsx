@@ -25,13 +25,15 @@ export default function PrayerRequestPage({
 }) {
   const [formText, setFormText] = useState(editingPR?.text || '');
   const [formExpiry, setFormExpiry] = useState(() => {
+    // Format Date as local YYYY-MM-DD (avoid toISOString which converts to UTC and can shift the day)
+    const fmtLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (editingPR?.expiresAt) {
       const expDate = editingPR.expiresAt.toDate ? editingPR.expiresAt.toDate() : new Date(editingPR.expiresAt);
-      return expDate.toISOString().split('T')[0];
+      return fmtLocal(expDate);
     }
     const d = new Date();
     d.setDate(d.getDate() + 7);
-    return d.toISOString().split('T')[0];
+    return fmtLocal(d);
   });
   const [formOutcome, setFormOutcome] = useState(editingPR?.outcome || '');
   const [saving, setSaving] = useState(false);
@@ -100,8 +102,9 @@ export default function PrayerRequestPage({
 
     setSaving(true);
     try {
-      const expiryDate = new Date(formExpiry);
-      expiryDate.setHours(23, 59, 59, 999);
+      // Parse YYYY-MM-DD as local date (new Date(string) treats it as UTC, which shifts the day in CT)
+      const [yy, mm, dd] = formExpiry.split('-').map(Number);
+      const expiryDate = new Date(yy, mm - 1, dd, 23, 59, 59, 999);
 
       if (editingPR?.id) {
         await updateDoc(doc(db, `users/${user.uid}/prayerRequests/${editingPR.id}`), {
