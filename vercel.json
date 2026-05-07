@@ -1,5 +1,8 @@
 {
   "rewrites": [
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/tos", "destination": "/tos.html" },
+    { "source": "/sms-optin", "destination": "/sms-optin.html" },
     { "source": "/((?!api/).*)", "destination": "/" }
   ],
   "crons": [
