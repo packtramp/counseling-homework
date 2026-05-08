@@ -87,6 +87,18 @@ export default function UnifiedDashboard() {
   // "My Counselees" section state (only for counselors)
   const [counselees, setCounselees] = useState([]);
   const [counseleeTab, setCounseleeTab] = useState('active');
+  const [apTab, setApTab] = useState('active');
+
+  const AP_INACTIVE_DAYS = 21;
+  const isAPInactive = (person, statusData) => {
+    const last = statusData?.lastCompletion || 0;
+    const now = Date.now();
+    const ms21 = AP_INACTIVE_DAYS * 86400000;
+    if (now - last < ms21) return false; // recent activity
+    const addedAt = person.addedAt?.toDate ? person.addedAt.toDate().getTime() : new Date(person.addedAt || 0).getTime();
+    if (now - addedAt < ms21) return false; // grace period for new APs
+    return true;
+  };
   const [counseleeLiveStatus, setCounseleeLiveStatus] = useState({});
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -512,9 +524,17 @@ export default function UnifiedDashboard() {
             // Calculate streak live from homework completions (not stale closure)
             const liveStreak = calculateAPStreak(homework, personProfile);
             const liveWeekStreak = calculateWeekStreak(homework);
+            // Find most recent completion timestamp across all homework
+            let lastCompletion = 0;
+            for (const hw of homework) {
+              for (const c of (hw.completions || [])) {
+                const cMs = c.toDate ? c.toDate().getTime() : new Date(c).getTime();
+                if (cMs > lastCompletion) lastCompletion = cMs;
+              }
+            }
             setWatchingUsersStatus(prev => ({
               ...prev,
-              [person.uid]: { status, streak: liveStreak, weekStreak: liveWeekStreak, photoUrl, onVacation: status === 'vacation' }
+              [person.uid]: { status, streak: liveStreak, weekStreak: liveWeekStreak, photoUrl, onVacation: status === 'vacation', lastCompletion }
             }));
           }, (error) => {
             console.error('Listener error for AP homework (' + person.name + '):', error.code, error.message);
@@ -1106,6 +1126,30 @@ export default function UnifiedDashboard() {
         actor: 'self',
         actorName: myData?.name || 'Me',
         details: `Completed "${homeworkItem.title}"`,
+        timestamp: serverTimestamp()
+      });
+    } finally {
+      setCompletingId(null);
+    }
+  };
+
+  const handleMyForgotYesterday = async (homeworkItem) => {
+    if (completingId) return;
+    if (homeworkItem.linkedThinkListId || homeworkItem.linkedJournalingId) return;
+    setCompletingId(homeworkItem.id);
+    try {
+      const basePath = getMyBasePath();
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      y.setHours(23, 59, 0, 0);
+      await updateDoc(doc(db, `${basePath}/homework`, homeworkItem.id), {
+        completions: arrayUnion(Timestamp.fromDate(y))
+      });
+      await addDoc(collection(db, `${basePath}/activityLog`), {
+        action: 'homework_completed_backdated',
+        actor: 'self',
+        actorName: myData?.name || 'Me',
+        details: `Backdated "${homeworkItem.title}" to yesterday`,
         timestamp: serverTimestamp()
       });
     } finally {
@@ -1860,6 +1904,42 @@ export default function UnifiedDashboard() {
     });
   };
 
+  const handleResetHomeworkHistory = async () => {
+    const basePath = `counselors/${user.uid}/counselees/${selectedCounselee.id}`;
+    const hwSnap = await getDocs(collection(db, `${basePath}/homework`));
+    const activeItems = hwSnap.docs.filter(d => {
+      const s = d.data().status;
+      return !s || s === 'active';
+    });
+    const count = activeItems.length;
+    if (count === 0) {
+      window.alert('No active homework items to reset.');
+      return;
+    }
+    const confirmed = window.confirm(
+      `Reset homework history for ${selectedCounselee.name}?\n\n` +
+      `This clears completion data on ${count} active homework item${count === 1 ? '' : 's'} and restarts the streak counter from today.\n\n` +
+      `Homework definitions (title, weekly target), notes, journals, Think Lists, and prayer requests are NOT affected.\n\n` +
+      `Continue?`
+    );
+    if (!confirmed) return;
+    const now = Timestamp.now();
+    const updates = activeItems.map(d =>
+      updateDoc(doc(db, `${basePath}/homework`, d.id), { assignedDate: now, completions: [] })
+    );
+    await Promise.all(updates);
+    await updateDoc(doc(db, `counselors/${user.uid}/counselees`, selectedCounselee.id), { currentStreak: 0 });
+    await addDoc(collection(db, `${basePath}/activityLog`), {
+      action: 'homework_history_reset',
+      actor: 'counselor',
+      actorUid: user.uid,
+      actorName: userProfile?.name || 'Counselor',
+      details: `Reset ${count} homework item${count === 1 ? '' : 's'} (cleared completions, anchored assignedDate to today)`,
+      timestamp: serverTimestamp()
+    });
+    window.alert(`Reset complete. ${count} item${count === 1 ? '' : 's'} restarted from today.`);
+  };
+
   const handleCounseleeNotesChange = async (newNotes) => {
     setCounseleeSessionNotes(newNotes);
     if (selectedCounseleeSession) {
@@ -2014,6 +2094,7 @@ export default function UnifiedDashboard() {
                 homework={myHomework}
                 role="counselee"
                 onComplete={handleMyComplete}
+                onForgotYesterday={handleMyForgotYesterday}
                 onUncheck={handleMyUncheckHomework}
                 onEdit={handleMyEditHomework}
                 onCancel={handleMyCancelHomework}
@@ -2254,6 +2335,7 @@ export default function UnifiedDashboard() {
               ) : (
                 <button className="graduate-btn" onClick={() => handleGraduateCounselee(true)}>Graduate</button>
               )}
+              <button className="reset-history-btn" onClick={handleResetHomeworkHistory} title="Clear homework completion history and restart the streak counter from today">Reset Stats</button>
               <button className="activity-icon-btn" onClick={() => setShowCounseleeActivityHistory(true)} title="Activity History">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
                   <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
@@ -2617,6 +2699,20 @@ export default function UnifiedDashboard() {
             {/* Accountability Partners section (above counselees) */}
             <div className="connected-subheader">
               <span className="connected-subheader-clickable" onClick={() => { setApModalDefaultTab('view'); setShowAccountabilityPartnersModal(true); }}>ACCOUNTABILITY PARTNERS</span>
+              {myWatchingUsers.length > 0 && (() => {
+                const activeCount = myWatchingUsers.filter(p => !isAPInactive(p, watchingUsersStatus[p.uid])).length;
+                const inactiveCount = myWatchingUsers.length - activeCount;
+                return (inactiveCount > 0 || apTab === 'inactive') ? (
+                  <div className="counselee-tabs">
+                    <button className={`tab-btn ${apTab === 'active' ? 'active' : ''}`} onClick={() => setApTab('active')}>
+                      Active ({activeCount})
+                    </button>
+                    <button className={`tab-btn ${apTab === 'inactive' ? 'active' : ''}`} onClick={() => setApTab('inactive')}>
+                      Inactive ({inactiveCount})
+                    </button>
+                  </div>
+                ) : null;
+              })()}
               <button className="slim-add-btn" onClick={() => { setApModalDefaultTab('add'); setShowAccountabilityPartnersModal(true); }}>+ AP</button>
             </div>
 
@@ -2678,7 +2774,9 @@ export default function UnifiedDashboard() {
             {/* AP Tiles - People I'm watching */}
             {myWatchingUsers.length > 0 && (
               <div className="accountability-tiles-row">
-                {myWatchingUsers.map(person => {
+                {myWatchingUsers
+                  .filter(p => apTab === 'active' ? !isAPInactive(p, watchingUsersStatus[p.uid]) : isAPInactive(p, watchingUsersStatus[p.uid]))
+                  .map(person => {
                   const statusData = watchingUsersStatus[person.uid] || {};
                   const status = statusData.status || 'unknown';
                   const streak = statusData.streak || 0;
@@ -2836,6 +2934,7 @@ export default function UnifiedDashboard() {
                     homework={myHomework}
                     role="counselee"
                     onComplete={handleMyComplete}
+                    onForgotYesterday={handleMyForgotYesterday}
                     onUncheck={handleMyUncheckHomework}
                     onEdit={handleMyEditHomework}
                     onCancel={handleMyCancelHomework}
