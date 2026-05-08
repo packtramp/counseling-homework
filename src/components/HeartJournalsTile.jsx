@@ -41,6 +41,9 @@ export default function HeartJournalsTile({
             <span className="hj-draft-count"> + {drafts.length} draft{drafts.length > 1 ? 's' : ''}</span>
           )}
         </span>
+        {isCounselor && onAdd && (
+          <button className="add-homework-btn" onClick={onAdd} aria-label="Add heart journal entry">+</button>
+        )}
       </div>
 
       <div className="hj-tile-content">

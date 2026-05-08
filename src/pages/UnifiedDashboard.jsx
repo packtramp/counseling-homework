@@ -2130,7 +2130,7 @@ export default function UnifiedDashboard() {
     return (
       <HeartJournalPage
         userProfile={{ uid: user.uid, counselorId: user.uid, counseleeDocId: selectedCounselee.id, name: selectedCounselee.name }}
-        editingJournal={viewingCounseleeHeartJournal}
+        editingJournal={viewingCounseleeHeartJournal?.id ? viewingCounseleeHeartJournal : null}
         role="counselor"
         onClose={() => setViewingCounseleeHeartJournal(null)}
         onSaved={() => setViewingCounseleeHeartJournal(null)}
@@ -2417,7 +2417,7 @@ export default function UnifiedDashboard() {
               )}
             </div>
             <div className="b-dashboard-right">
-              <HeartJournalsTile journals={counseleeHeartJournals} role="counselor" onView={(j) => setViewingCounseleeHeartJournal(j)} />
+              <HeartJournalsTile journals={counseleeHeartJournals} role="counselor" onView={(j) => setViewingCounseleeHeartJournal(j)} onAdd={() => setViewingCounseleeHeartJournal({})} />
               <ThinkListsTile thinkLists={counseleeThinkLists} role="counselor" onView={(tl) => setViewingCounseleeThinkList(tl)} onAdd={() => setViewingCounseleeThinkList({})} />
               <JournalingTile journals={counseleeJournals} role="counselor" onView={(j) => setViewingCounseleeJournal(j)} onAdd={() => setViewingCounseleeJournal({})} />
             </div>

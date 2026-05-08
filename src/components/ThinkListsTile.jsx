@@ -55,6 +55,9 @@ export default function ThinkListsTile({
             <span className="tl-draft-count"> + {drafts.length} draft{drafts.length > 1 ? 's' : ''}</span>
           )}
         </span>
+        {role === 'counselor' && onAdd && (
+          <button className="add-homework-btn" onClick={onAdd} aria-label="Add think list">+</button>
+        )}
       </div>
 
       <div className="tl-tile-content">
