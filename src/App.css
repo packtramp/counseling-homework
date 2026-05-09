@@ -7946,7 +7946,7 @@ button.counselor-check-indicator.clickable-check:active {
 .pr-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--color-gray-100);
   gap: 0.5rem;
@@ -7979,6 +7979,11 @@ button.counselor-check-indicator.clickable-check:active {
 
 .pr-text {
   color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .pr-item-actions {

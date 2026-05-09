@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '../config/firebase';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, Timestamp, getDocs, orderBy, increment } from 'firebase/firestore';
+
+// Module-level stable refs — used as prop defaults so React's effect-deps comparison
+// doesn't see a new array each render (which would tear down + rebuild Firestore listeners).
+const EMPTY_ARRAY = [];
 // Note: addDoc, updateDoc, serverTimestamp used by handlePrayed; form CRUD moved to PrayerRequestPage
 
 /**
@@ -25,8 +29,8 @@ export default function PrayerRequestsTile({
   userProfile,
   role = 'counselee',
   isCounselor = false,
-  watchingUsers = [],
-  counseleeUids = [],
+  watchingUsers = EMPTY_ARRAY,
+  counseleeUids = EMPTY_ARRAY,
   targetUid = null,
   targetName = null,
   onPrayerCountUpdate,
@@ -254,7 +258,7 @@ export default function PrayerRequestsTile({
       <div className="pr-item-content">
         {showOwner && <span className="pr-owner">{pr.ownerName || 'Unknown'}</span>}
         {showOwner && <span className="pr-separator"> - </span>}
-        <span className="pr-text">{pr.text?.substring(0, 120)}{pr.text?.length > 120 ? '...' : ''}</span>
+        <span className="pr-text">{pr.text}</span>
       </div>
       <div className="pr-item-actions">
         {showActions === 'pray' && (
