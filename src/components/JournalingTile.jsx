@@ -44,6 +44,9 @@ export default function JournalingTile({
         <span className="jn-tile-title">
           Journaling ({activeJournals.length})
         </span>
+        {role === 'counselor' && onAdd && (
+          <button className="add-homework-btn" onClick={onAdd} aria-label="Add journal entry">+</button>
+        )}
       </div>
 
       <div className="jn-tile-content">
