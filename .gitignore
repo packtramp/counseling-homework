@@ -30,4 +30,7 @@ dist-ssr
 *firebase-adminsdk*
 serviceaccountkey.json
 
+# Audit JSONs from one-off admin scripts (contain UIDs + emails)
+scripts/*-audit-*.json
+
 .env*.local
