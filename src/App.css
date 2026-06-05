@@ -1607,6 +1607,24 @@ textarea {
   border-color: var(--color-gray-400, #a0aec0);
 }
 
+.archive-homework-btn {
+  background: transparent;
+  border: 1px solid var(--color-gray-300, #cbd5e0);
+  color: var(--color-text-muted, #718096);
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  margin-left: 8px;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.archive-homework-btn:hover {
+  background: var(--color-gray-100, #edf2f7);
+  border-color: var(--color-gray-400, #a0aec0);
+}
+
 /* Session Page Layout */
 .session-nav {
   display: flex;

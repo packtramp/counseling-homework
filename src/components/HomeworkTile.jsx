@@ -554,6 +554,16 @@ export default function HomeworkTile({
                           </span>
                         )}
                       </span>
+                      {onCancel && isLinkedItem && (
+                        <button
+                          type="button"
+                          className="archive-homework-btn"
+                          onClick={(e) => { e.stopPropagation(); if (window.confirm(`Archive "${item.title}"? It will stop counting and move to the Done list. You can restore it anytime.`)) onCancel(item); }}
+                          title="Archive this item"
+                        >
+                          Archive
+                        </button>
+                      )}
                     </div>
                   );
                 }
@@ -616,6 +626,16 @@ export default function HomeworkTile({
                         onClick={(e) => { e.stopPropagation(); onForgotYesterday(item); }}
                       >
                         I forgot yesterday
+                      </button>
+                    )}
+                    {onCancel && isLinkedItem && (
+                      <button
+                        type="button"
+                        className="archive-homework-btn"
+                        onClick={(e) => { e.stopPropagation(); if (window.confirm(`Archive "${item.title}"? It will stop counting toward your progress and move to your Done list. You can restore it anytime.`)) onCancel(item); }}
+                        title="Archive this item"
+                      >
+                        Archive
                       </button>
                     )}
                   </div>
