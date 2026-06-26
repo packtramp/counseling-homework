@@ -721,12 +721,18 @@ export default async function handler(req, res) {
         const itemsInCurrent = activeItemCount - doneForTodayCount; // Items not done today and not weekly-complete
         const urgentUndone = behindNotDoneToday + criticalNotDoneToday; // Behind or critical AND not done today
 
-        // Accountability-partner section — folded into the FIRST (slot-1) email of the day only,
-        // active partners only. null if this user watches nobody active. Replaces the old 3 AM email.
-        let partnerSection = null;
-        if (matchedSlot === 1 && userData.watchingUsers && userData.watchingUsers.length > 0) {
-          try { partnerSection = await buildPartnerSection(userData, new Date()); }
-          catch (e) { partnerSection = null; diagnostics.push({ name: userName, reason: 'partner_section_error', error: e.message }); }
+        // Counselee + accountability-partner sections — folded into the FIRST (slot-1) email
+        // of the day only, active only. Replace the old standalone 11 PM + 3 AM emails.
+        let partnerSection = null, counseleeSection = null;
+        if (matchedSlot === 1) {
+          if (userData.watchingUsers && userData.watchingUsers.length > 0) {
+            try { partnerSection = await buildPartnerSection(userData, new Date()); }
+            catch (e) { diagnostics.push({ name: userName, reason: 'partner_section_error', error: e.message }); }
+          }
+          if (userData.isCounselor) {
+            try { counseleeSection = await buildCounseleeSection(userId, new Date()); }
+            catch (e) { diagnostics.push({ name: userName, reason: 'counselee_section_error', error: e.message }); }
+          }
         }
 
         if (matchedSlot === 1) {
@@ -735,10 +741,10 @@ export default async function handler(req, res) {
           if (itemsInCurrent > 0) {
             shouldSend = true;
             message = `Hi ${userName}! You have ${itemsInCurrent} homework item${itemsInCurrent > 1 ? 's' : ''} to complete today. Open your app: https://counselinghomework.com`;
-          } else if (partnerSection) {
-            // No personal homework due today, but they're an active accountability partner → still send
+          } else if (partnerSection || counseleeSection) {
+            // No personal homework due today, but they oversee active counselees/partners → still send
             shouldSend = true;
-            message = `Hi ${userName}! Here's your accountability partner update. https://counselinghomework.com`;
+            message = `Hi ${userName}! Here's your daily update. https://counselinghomework.com`;
           }
         } else {
           // Slots 2-3: Nudge reminders — see EMAIL-RULES.md rules 3-5
@@ -780,10 +786,10 @@ export default async function handler(req, res) {
         let emailSent = false;
         if (wantsEmail) {
           try {
-            await sendEmail(email, userName, itemsInCurrent, thinkListIncomplete, urgentUndone, matchedSlot, matchedSlot === 1 ? hwDetail : null, partnerSection ? partnerSection.html : null);
+            await sendEmail(email, userName, itemsInCurrent, thinkListIncomplete, urgentUndone, matchedSlot, matchedSlot === 1 ? hwDetail : null, partnerSection ? partnerSection.html : null, counseleeSection ? counseleeSection.html : null);
             emailCount++;
             emailSent = true;
-            if (partnerSection) partnerSectionCount++;
+            if (partnerSection || counseleeSection) partnerSectionCount++;
           } catch (err) {
             console.error(`EMAIL FAILED for ${userName} (${email}):`, err.message);
             errors.push({ type: 'email', user: userName, error: err.message });
@@ -806,135 +812,12 @@ export default async function handler(req, res) {
 
     console.log(`Reminders sent: ${smsCount} SMS, ${emailCount} emails, ${errors.length} errors`);
 
-    // === COUNSELOR DAILY SUMMARY (fires at 11 PM Chicago) ===
-    let summaryCount = 0;
-    if (currentHour === '23') {
-      const toChicagoDate = (d) => {
-        const s = d.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
-        return new Date(s);
-      };
-      const todayChicago = toChicagoDate(new Date());
-      const todayKey = todayChicago.toDateString();
-      const smsMsPerDay = 1000 * 60 * 60 * 24;
-      const smsMsPerWeek = 7 * smsMsPerDay;
-
-      const counselorUsersSnap = await db.collection('users').where('isCounselor', '==', true).get();
-
-      for (const userDoc of counselorUsersSnap.docs) {
-        const counselorId = userDoc.id;
-        const counselorData = userDoc.data();
-
-        // Dedup: only send once per day
-        if (counselorData.lastSummarySent === todayStr) {
-          diagnostics.push({ name: counselorData.name, reason: 'summary_dedup' });
-          continue;
-        }
-
-        // Get counselor email from Firebase Auth
-        let counselorEmail;
-        try {
-          const authUser = await admin.auth().getUser(counselorId);
-          counselorEmail = authUser.email;
-        } catch (e) {
-          diagnostics.push({ name: counselorData.name, reason: 'summary_no_auth', error: e.message });
-          continue;
-        }
-
-        const counseleesSnap = await db.collection(`counselors/${counselorId}/counselees`).get();
-        if (counseleesSnap.empty) continue;
-
-        const summaryData = [];
-
-        for (const counseleeDoc of counseleesSnap.docs) {
-          const c = counseleeDoc.data();
-          if (c.status === 'inactive') continue;
-          if (c.graduated) continue; // Skip graduated counselees from daily summary
-          if (c.isSelf) continue; // Skip counselor's own self-counselor doc
-          if (!c.uid) continue; // Skip counselees with no account (counselor-only tracking)
-
-          const hwSnap = await db.collection(`counselors/${counselorId}/counselees/${counseleeDoc.id}/homework`).get();
-          const hwItems = [];
-
-          for (const hwDoc of hwSnap.docs) {
-            const hw = hwDoc.data();
-            if (hw.status === 'cancelled' || hw.status === 'expired' || hw.status === 'completed') continue;
-
-            const weeklyTarget = hw.weeklyTarget || 7;
-            const dailyCap = hw.dailyCap || 999;
-            const rawAssigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
-            const assignedDate = toChicagoMidnight(rawAssigned);
-            const completions = hw.completions || [];
-
-            // Midnight-normalized periods (matches client-side homeworkHelpers.js)
-            const totalDays = chicagoDaysBetween(assignedDate, todayChicago);
-            const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
-            const dayOfWeek = totalDays % 7;
-            const periodStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + weeksSinceAssigned * 7);
-            const daysLeftIncludingToday = 7 - dayOfWeek;
-
-            const dailyCounts = {};
-            let completedToday = false;
-            for (const comp of completions) {
-              const cDate = comp.date?.toDate ? comp.date.toDate() : (comp.toDate ? comp.toDate() : new Date(comp));
-              const cChicago = toChicagoMidnight(cDate);
-              if (cChicago >= periodStart && cChicago <= todayChicago) {
-                const dayKey2 = cChicago.toDateString();
-                dailyCounts[dayKey2] = (dailyCounts[dayKey2] || 0) + 1;
-              }
-              if (cChicago.toDateString() === todayKey) {
-                completedToday = true;
-              }
-            }
-
-            let weeklyCompleted = 0;
-            for (const count of Object.values(dailyCounts)) {
-              weeklyCompleted += Math.min(count, dailyCap);
-            }
-
-            const isFirstWeek = weeksSinceAssigned === 0;
-            const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
-            const effectiveTarget = isFirstWeek ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
-            const tasksRemaining = effectiveTarget - weeklyCompleted;
-            const maxPerDay = dailyCap < 999 ? dailyCap : 1;
-            const maxCanComplete = daysLeftIncludingToday * maxPerDay;
-            const isBehind = tasksRemaining > maxCanComplete;
-            const isWeeklyComplete = weeklyCompleted >= effectiveTarget;
-
-            hwItems.push({
-              title: hw.title,
-              completedToday,
-              weeklyCompleted,
-              effectiveTarget,
-              isBehind,
-              isWeeklyComplete
-            });
-          }
-
-          if (hwItems.length > 0) {
-            summaryData.push({ name: c.name, homework: hwItems });
-          }
-        }
-
-        if (summaryData.length > 0) {
-          const dateDisplay = chicagoTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Chicago' });
-          try {
-            await sendCounselorSummary(counselorEmail, counselorData.name || 'Counselor', summaryData, dateDisplay);
-            summaryCount++;
-            await db.doc(`users/${counselorId}`).update({ lastSummarySent: todayStr });
-          } catch (err) {
-            errors.push({ type: 'summary', counselor: counselorData.name, error: err.message });
-          }
-        }
-      }
-    }
-
 
     return res.status(200).json({
       success: true,
       time: currentTime,
       smsCount,
       emailCount,
-      summaryCount: summaryCount > 0 ? summaryCount : undefined,
       partnerSectionCount: partnerSectionCount > 0 ? partnerSectionCount : undefined,
       errors: errors.length > 0 ? errors : undefined,
       diagnostics: diagnostics.length > 0 ? diagnostics : undefined
@@ -985,7 +868,7 @@ async function sendSms(phone, message) {
 /**
  * Send Email via Resend
  */
-async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, behindCount = 0, slot = 1, hwDetail = null, partnerHtml = null) {
+async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, behindCount = 0, slot = 1, hwDetail = null, partnerHtml = null, counseleeHtml = null) {
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.RESEND_FROM_EMAIL || 'reminders@counselinghomework.com';
 
@@ -997,10 +880,10 @@ async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, beh
   const ordinal = slot === 1 ? 'first' : slot === 2 ? 'second' : 'third';
   let subject, bodyText, detailHtml = '';
 
-  if (slot === 1 && currentCount === 0 && partnerHtml) {
-    // Partner-only morning email (this user has no homework of their own today)
-    subject = `Accountability Partner Update`;
-    bodyText = `Here's how your accountability partners are doing:`;
+  if (slot === 1 && currentCount === 0 && (partnerHtml || counseleeHtml)) {
+    // Oversight-only morning email (this user has no homework of their own today)
+    subject = `Your Daily Update`;
+    bodyText = `Here's your daily update:`;
   } else if (slot === 1) {
     subject = `Homework Reminder: ${currentCount} item${currentCount > 1 ? 's' : ''} this week`;
     bodyText = `Here's your homework for today:`;
@@ -1067,6 +950,7 @@ async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, beh
           <p>Hi ${name},</p>
           <p>${bodyText}</p>
           ${detailHtml}
+          ${counseleeHtml || ''}
           ${partnerHtml || ''}
           <p style="margin-top: 20px;">
             <a href="https://counselinghomework.com"
@@ -1091,117 +975,6 @@ async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, beh
   return response.json();
 }
 
-/**
- * Send Counselor Daily Summary Email
- * One email per counselor showing all counselees' homework status
- */
-async function sendCounselorSummary(email, counselorName, summaryData, dateDisplay) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.RESEND_FROM_EMAIL || 'reminders@counselinghomework.com';
-
-  if (!apiKey) throw new Error('Resend not configured');
-
-  // Build HTML rows grouped by counselee
-  let counseleeRows = '';
-  for (const counselee of summaryData) {
-    const behindItems = counselee.homework.filter(h => h.isBehind).length;
-    const completeItems = counselee.homework.filter(h => h.isWeeklyComplete).length;
-    const totalItems = counselee.homework.length;
-
-    let overallStatus, statusColor;
-    if (behindItems > 0) {
-      overallStatus = `${behindItems} behind`;
-      statusColor = '#e53e3e';
-    } else if (completeItems === totalItems) {
-      overallStatus = 'All complete';
-      statusColor = '#38a169';
-    } else {
-      overallStatus = 'On track';
-      statusColor = '#2c5282';
-    }
-
-    counseleeRows += `
-      <tr style="background: #edf2f7;">
-        <td colspan="4" style="padding: 10px 12px; font-weight: bold; font-size: 15px;">
-          ${counselee.name}
-          <span style="color: ${statusColor}; font-weight: normal; font-size: 13px; margin-left: 8px;">${overallStatus}</span>
-        </td>
-      </tr>`;
-
-    for (const hw of counselee.homework) {
-      // Today column: ✓ = done today, X = can't catch up, blank = on track or complete
-      const todayIcon = hw.completedToday
-        ? '<span style="color: #38a169; font-size: 16px;">&#10003;</span>'
-        : (hw.isBehind ? '<span style="color: #e53e3e; font-size: 16px;">&#10007;</span>' : '');
-      const progress = `${hw.weeklyCompleted}/${hw.effectiveTarget}`;
-      let status, sColor;
-      if (hw.isWeeklyComplete) {
-        status = 'Complete'; sColor = '#38a169';
-      } else if (hw.isBehind) {
-        status = "Can't catch up"; sColor = '#e53e3e';
-      } else {
-        status = 'On track'; sColor = '#2c5282';
-      }
-
-      counseleeRows += `
-        <tr style="border-bottom: 1px solid #e2e8f0;">
-          <td style="padding: 6px 12px;">${hw.title}</td>
-          <td style="padding: 6px 12px; text-align: center;">${todayIcon}</td>
-          <td style="padding: 6px 12px; text-align: center;">${progress}</td>
-          <td style="padding: 6px 12px; text-align: center; color: ${sColor}; font-weight: 600;">${status}</td>
-        </tr>`;
-    }
-  }
-
-  const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #2c5282; margin-bottom: 4px;">Daily Summary</h2>
-      <p style="color: #718096; margin-top: 0;">${dateDisplay}</p>
-      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-        <thead>
-          <tr style="background: #2c5282; color: white;">
-            <th style="padding: 8px 12px; text-align: left;">Homework</th>
-            <th style="padding: 8px 12px; text-align: center; width: 60px;">Today</th>
-            <th style="padding: 8px 12px; text-align: center; width: 60px;">Week</th>
-            <th style="padding: 8px 12px; text-align: center; width: 100px;">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${counseleeRows}
-        </tbody>
-      </table>
-      <p style="margin-top: 16px;">
-        <a href="https://counselinghomework.com"
-           style="display: inline-block; background: #2c5282; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">
-          Open App
-        </a>
-      </p>
-      <p style="color: #718096; font-size: 12px; margin-top: 20px;">
-        Sent nightly at 11 PM CT.
-      </p>
-    </div>`;
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: `Counseling Homework <${fromEmail}>`,
-      to: email,
-      subject: `Daily Summary \u2014 ${dateDisplay}`,
-      html
-    })
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Summary email send failed');
-  }
-
-  return response.json();
-}
 
 // An accountability partner is "inactive" if they've logged nothing in this many
 // days (past a grace window for newly-added partners). Mirrors the app's
@@ -1323,14 +1096,104 @@ async function buildPartnerSection(apData, now) {
   if (lines.length === 0) return null;
 
   let bullets = '';
-  for (const l of lines) bullets += `<li style="margin-bottom: 8px;">${l}</li>\n`;
+  for (const l of lines) bullets += `<li style="margin-bottom: 3px;">${l}</li>`;
   const html = `
-      <div style="margin-top: 28px; padding-top: 16px; border-top: 2px solid #e2e8f0;">
-        <h3 style="color: #2c5282; margin-bottom: 8px;">Your Accountability Partners</h3>
-        <ul style="font-size: 14px; line-height: 1.6; color: #2d3748;">
-          ${bullets}
-        </ul>
-        <p style="font-size: 14px; color: #4a5568; margin-bottom: 0;">Keep encouraging them!</p>
+      <div style="margin-top: 20px; padding-top: 12px; border-top: 2px solid #e2e8f0;">
+        <h3 style="color: #2c5282; margin: 0 0 4px;">Your Accountability Partners</h3>
+        <ul style="font-size: 13px; line-height: 1.4; color: #2d3748; margin: 0; padding-left: 20px;">${bullets}</ul>
       </div>`;
   return { html, count: lines.length };
+}
+
+/**
+ * Build a COMPACT "Your Counselees" section for a counselor, to append to their
+ * morning (slot-1) email. Active counselees only (skip graduated / status inactive /
+ * self / no-account, and anyone idle >21 days past a grace window). Per counselee:
+ * a name + behind-count header, then tight per-item week-progress rows.
+ * Returns { html, count } or null. Replaces the old standalone 11 PM summary email.
+ */
+async function buildCounseleeSection(counselorId, now) {
+  const counseleesSnap = await db.collection(`counselors/${counselorId}/counselees`).get();
+  if (counseleesSnap.empty) return null;
+
+  const todayChicago = new Date(now.toLocaleDateString('en-US', { timeZone: 'America/Chicago' }));
+  const ms21 = AP_INACTIVE_DAYS * 86400000;
+  const rows = [];
+
+  for (const counseleeDoc of counseleesSnap.docs) {
+    const c = counseleeDoc.data();
+    if (c.status === 'inactive' || c.graduated || c.isSelf || !c.uid) continue;
+
+    const hwSnap = await db.collection(`counselors/${counselorId}/counselees/${counseleeDoc.id}/homework`).get();
+    const items = [];
+    let behind = 0, lastCompletionMs = 0;
+
+    for (const hwDoc of hwSnap.docs) {
+      const hw = hwDoc.data();
+      for (const comp of (hw.completions || [])) {
+        const t = comp.date?.toDate ? comp.date.toDate().getTime() : (comp.toDate ? comp.toDate().getTime() : new Date(comp).getTime());
+        if (t > lastCompletionMs) lastCompletionMs = t;
+      }
+      if (hw.status === 'cancelled' || hw.status === 'expired' || hw.status === 'completed') continue;
+
+      const weeklyTarget = hw.weeklyTarget || 7;
+      const dailyCap = hw.dailyCap || 999;
+      const rawAssigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+      const assignedDate = toChicagoMidnight(rawAssigned);
+      const totalDays = chicagoDaysBetween(assignedDate, todayChicago);
+      const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+      const dayOfWeek = totalDays % 7;
+      const periodStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + weeksSinceAssigned * 7);
+      const daysLeftIncludingToday = 7 - dayOfWeek;
+      const dailyCounts = {};
+      for (const comp of (hw.completions || [])) {
+        const cChicago = toChicagoMidnight(comp.date?.toDate ? comp.date.toDate() : (comp.toDate ? comp.toDate() : new Date(comp)));
+        if (cChicago >= periodStart && cChicago <= todayChicago) {
+          const k = cChicago.toDateString();
+          dailyCounts[k] = (dailyCounts[k] || 0) + 1;
+        }
+      }
+      let weeklyCompleted = 0;
+      for (const v of Object.values(dailyCounts)) weeklyCompleted += Math.min(v, dailyCap);
+      const isFirstWeek = weeksSinceAssigned === 0;
+      const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+      const effectiveTarget = isFirstWeek ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
+      const maxPerDay = dailyCap < 999 ? dailyCap : 1;
+      const isBehind = (effectiveTarget - weeklyCompleted) > daysLeftIncludingToday * maxPerDay;
+      const isWeeklyComplete = weeklyCompleted >= effectiveTarget;
+      if (isBehind) behind++;
+      items.push({ title: hw.title, weeklyCompleted, effectiveTarget, isBehind, isWeeklyComplete });
+    }
+
+    if (items.length === 0) continue;
+    // Active filter: skip dormant counselees (nothing logged in 21 days, added >21 days ago)
+    const createdMs = c.createdAt?.toDate ? c.createdAt.toDate().getTime() : (c.createdAt ? new Date(c.createdAt).getTime() : 0);
+    const inactive = (now.getTime() - lastCompletionMs >= ms21) && (now.getTime() - createdMs >= ms21);
+    if (inactive) continue;
+
+    rows.push({ name: c.name || 'Counselee', behind, items });
+  }
+
+  if (rows.length === 0) return null;
+
+  let tbody = '';
+  for (const r of rows) {
+    const head = r.behind > 0
+      ? `<span style="font-weight:400;color:#e53e3e;">${r.behind} behind</span>`
+      : `<span style="font-weight:400;color:#2c5282;">on track</span>`;
+    tbody += `<tr><td colspan="2" style="padding:7px 4px 1px;font-weight:700;color:#2d3748;">${r.name}&nbsp;&nbsp;${head}</td></tr>`;
+    for (const it of r.items) {
+      let status, color;
+      if (it.isWeeklyComplete) { status = 'Done'; color = '#38a169'; }
+      else if (it.isBehind) { status = 'Behind'; color = '#e53e3e'; }
+      else { status = 'On track'; color = '#2c5282'; }
+      tbody += `<tr><td style="padding:1px 4px;color:#4a5568;">${it.title} <span style="color:#a0aec0;">${it.weeklyCompleted}/${it.effectiveTarget}</span></td><td style="padding:1px 4px;text-align:right;color:${color};font-weight:600;white-space:nowrap;">${status}</td></tr>`;
+    }
+  }
+  const html = `
+      <div style="margin-top: 20px; padding-top: 12px; border-top: 2px solid #e2e8f0;">
+        <h3 style="color:#2c5282;margin:0 0 4px;">Your Counselees</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">${tbody}</table>
+      </div>`;
+  return { html, count: rows.length };
 }
