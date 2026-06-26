@@ -2627,8 +2627,8 @@ export default function UnifiedDashboard() {
                 const totalDays = calculateTotalDays(myHomework);
                 return (dayStreak > 0 || totalDays > 0) ? (
                   <div className="personal-streak">
-                    {dayStreak > 0 && <span className="streak-badge day-streak" title="Current streak — consecutive days; resets if you miss a target">{dayStreak} day streak</span>}
-                    {totalDays > 0 && <span className="streak-badge week-streak" title="Total days you've done any homework — never resets">{totalDays} total days</span>}
+                    {dayStreak > 0 && <span className="streak-badge day-streak" title="Current streak — consecutive days; resets if you miss a target">{dayStreak} streak</span>}
+                    {totalDays > 0 && <span className="streak-badge week-streak" title="Total days you've done any homework — never resets">{totalDays} days</span>}
                   </div>
                 ) : null;
               })()}
