@@ -509,6 +509,7 @@ export default async function handler(req, res) {
     const allUsersSnap = await db.collection('users').where('emailReminders', '==', true).get();
     let smsCount = 0;
     let emailCount = 0;
+    let partnerSectionCount = 0; // morning emails that included an accountability-partner section
     let errors = [];
     let diagnostics = [];
 
@@ -720,12 +721,24 @@ export default async function handler(req, res) {
         const itemsInCurrent = activeItemCount - doneForTodayCount; // Items not done today and not weekly-complete
         const urgentUndone = behindNotDoneToday + criticalNotDoneToday; // Behind or critical AND not done today
 
+        // Accountability-partner section — folded into the FIRST (slot-1) email of the day only,
+        // active partners only. null if this user watches nobody active. Replaces the old 3 AM email.
+        let partnerSection = null;
+        if (matchedSlot === 1 && userData.watchingUsers && userData.watchingUsers.length > 0) {
+          try { partnerSection = await buildPartnerSection(userData, new Date()); }
+          catch (e) { partnerSection = null; diagnostics.push({ name: userName, reason: 'partner_section_error', error: e.message }); }
+        }
+
         if (matchedSlot === 1) {
           // Slot 1: Morning overview — send if any items are in Current tab (not done for today)
           // See EMAIL-RULES.md rule 1
           if (itemsInCurrent > 0) {
             shouldSend = true;
             message = `Hi ${userName}! You have ${itemsInCurrent} homework item${itemsInCurrent > 1 ? 's' : ''} to complete today. Open your app: https://counselinghomework.com`;
+          } else if (partnerSection) {
+            // No personal homework due today, but they're an active accountability partner → still send
+            shouldSend = true;
+            message = `Hi ${userName}! Here's your accountability partner update. https://counselinghomework.com`;
           }
         } else {
           // Slots 2-3: Nudge reminders — see EMAIL-RULES.md rules 3-5
@@ -749,9 +762,10 @@ export default async function handler(req, res) {
         }
         diagnostics.push({ name: userName, reason: 'sending', matchedSlot, currentCount, behindCount, thinkListIncomplete });
 
-        // Send SMS
+        // Send SMS — only for the user's OWN homework, never for a partner-only update
+        const partnerOnly = matchedSlot === 1 && itemsInCurrent === 0;
         let smsSent = false;
-        if (wantsSms) {
+        if (wantsSms && !partnerOnly) {
           try {
             await sendSms(phone, message);
             smsCount++;
@@ -766,9 +780,10 @@ export default async function handler(req, res) {
         let emailSent = false;
         if (wantsEmail) {
           try {
-            await sendEmail(email, userName, itemsInCurrent, thinkListIncomplete, urgentUndone, matchedSlot, matchedSlot === 1 ? hwDetail : null);
+            await sendEmail(email, userName, itemsInCurrent, thinkListIncomplete, urgentUndone, matchedSlot, matchedSlot === 1 ? hwDetail : null, partnerSection ? partnerSection.html : null);
             emailCount++;
             emailSent = true;
+            if (partnerSection) partnerSectionCount++;
           } catch (err) {
             console.error(`EMAIL FAILED for ${userName} (${email}):`, err.message);
             errors.push({ type: 'email', user: userName, error: err.message });
@@ -913,196 +928,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // === AP DAILY SUMMARY (fires at 3 AM Chicago — checks YESTERDAY's completions) ===
-    // Shifted from midnight to 3 AM to match the day-rollover rule:
-    // night owls have until 3 AM to complete homework for "yesterday"
-    let apSummaryCount = 0;
-    if (currentHour === '03') {
-      const toChicagoDateAP = (d) => {
-        const s = d.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
-        return new Date(s);
-      };
-      // At 3 AM, the day has truly ended — check YESTERDAY's activity
-      const yesterdayDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const yesterdayChicagoAP = toChicagoDateAP(yesterdayDate);
-      const todayKeyAP = yesterdayChicagoAP.toDateString();
-      const apMsPerDay = 1000 * 60 * 60 * 24;
-      const apMsPerWeek = 7 * apMsPerDay;
-      // Query ALL users (not just counselors) since any user can be an AP
-      const allUsersSnap = await db.collection('users').get();
-
-      for (const apDoc of allUsersSnap.docs) {
-        const apData = apDoc.data();
-        const apId = apDoc.id;
-
-        // Skip users without watchingUsers
-        if (!apData.watchingUsers || !Array.isArray(apData.watchingUsers) || apData.watchingUsers.length === 0) {
-          continue;
-        }
-
-        // Dedup: only send once per day
-        if (apData.lastAPSummaryDate === todayStr) {
-          diagnostics.push({ name: apData.name, reason: 'ap_summary_dedup' });
-          continue;
-        }
-
-        // Get AP email from user doc or Firebase Auth
-        let apEmail = apData.email;
-        if (!apEmail) {
-          try {
-            const authUser = await admin.auth().getUser(apId);
-            apEmail = authUser.email;
-          } catch (e) {
-            diagnostics.push({ name: apData.name, reason: 'ap_no_email', error: e.message });
-            continue;
-          }
-        }
-
-        const apSummaryItems = [];
-
-        for (const watchEntry of apData.watchingUsers) {
-          // watchEntry can be a string (uid) or object with uid/dataPath
-          const watchedUid = typeof watchEntry === 'string' ? watchEntry : watchEntry.uid;
-          const dataPath = typeof watchEntry === 'object' ? watchEntry.dataPath : null;
-
-          if (!watchedUid) continue;
-
-          // Get watched user's name
-          let watchedName = 'Unknown';
-          let watchedUserData = null;
-          try {
-            const watchedUserDoc = await db.doc(`users/${watchedUid}`).get();
-            if (watchedUserDoc.exists) {
-              watchedUserData = watchedUserDoc.data();
-              watchedName = watchedUserData.name || 'Unknown';
-            }
-          } catch (e) {
-            // Fall back to Auth display name
-            try {
-              const authUser = await admin.auth().getUser(watchedUid);
-              watchedName = authUser.displayName || authUser.email || 'Unknown';
-            } catch (e2) {
-              // skip
-            }
-          }
-
-          // Skip watched users on vacation
-          if (watchedUserData && watchedUserData.vacationStart && watchedUserData.vacationEnd) {
-            const nowVac = new Date();
-            const vacStart = watchedUserData.vacationStart.toDate ? watchedUserData.vacationStart.toDate() : new Date(watchedUserData.vacationStart);
-            const vacEnd = watchedUserData.vacationEnd.toDate ? watchedUserData.vacationEnd.toDate() : new Date(watchedUserData.vacationEnd);
-            if (nowVac >= vacStart && nowVac <= vacEnd) {
-              diagnostics.push({ name: watchedName, reason: 'watched_user_on_vacation', ap: apData.name });
-              continue;
-            }
-          }
-
-          // Determine homework path - use dataPath if provided, otherwise self-counselor pattern
-          const hwPath = dataPath
-            ? `${dataPath}/homework`
-            : `counselors/${watchedUid}/counselees/${watchedUid}/homework`;
-
-          let hwSnap;
-          try {
-            hwSnap = await db.collection(hwPath).get();
-          } catch (e) {
-            diagnostics.push({ name: watchedName, reason: 'ap_hw_fetch_error', error: e.message });
-            continue;
-          }
-
-          if (hwSnap.empty) continue;
-
-          let completedTodayTotal = 0;
-          let totalActiveItems = 0;
-          let behindItems = 0;
-          let allCompleteForWeek = true;
-
-          for (const hwDoc of hwSnap.docs) {
-            const hw = hwDoc.data();
-            if (hw.status === 'cancelled' || hw.status === 'expired' || hw.status === 'completed') continue;
-
-            totalActiveItems++;
-
-            const weeklyTarget = hw.weeklyTarget || 7;
-            const dailyCap = hw.dailyCap || 999;
-            const rawAssigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
-            const assignedDate = toChicagoMidnight(rawAssigned);
-            const completions = hw.completions || [];
-
-            // Midnight-normalized periods (matches client-side homeworkHelpers.js)
-            const totalDays = chicagoDaysBetween(assignedDate, yesterdayChicagoAP);
-            const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
-            const dayOfWeek = totalDays % 7;
-            const periodStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + weeksSinceAssigned * 7);
-            const daysLeftIncludingToday = 7 - dayOfWeek;
-
-            // Count completions in this period (daily cap by Chicago day)
-            const dailyCounts = {};
-            let completedToday = false;
-            for (const comp of completions) {
-              const cDate = comp.date?.toDate ? comp.date.toDate() : (comp.toDate ? comp.toDate() : new Date(comp));
-              const cChicago = toChicagoMidnight(cDate);
-              if (cChicago >= periodStart && cChicago <= yesterdayChicagoAP) {
-                const dayKey = cChicago.toDateString();
-                dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
-              }
-              if (cChicago.toDateString() === todayKeyAP) {
-                completedToday = true;
-              }
-            }
-
-            // Sum capped daily completions
-            let weeklyCompleted = 0;
-            for (const count of Object.values(dailyCounts)) {
-              weeklyCompleted += Math.min(count, dailyCap);
-            }
-
-            // Week 1 pro-rate (scale by dailyCap for Think Lists)
-            const isFirstWeek = weeksSinceAssigned === 0;
-            const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
-            const effectiveTarget = isFirstWeek ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
-            const tasksRemaining = effectiveTarget - weeklyCompleted;
-            const maxPerDay = dailyCap < 999 ? dailyCap : 1;
-            const maxCanComplete = daysLeftIncludingToday * maxPerDay;
-            const isBehind = tasksRemaining > maxCanComplete;
-            const isWeeklyComplete = weeklyCompleted >= effectiveTarget;
-
-            if (completedToday) completedTodayTotal++;
-            if (isBehind) behindItems++;
-            if (!isWeeklyComplete) allCompleteForWeek = false;
-          }
-
-          // Skip users with no active homework
-          if (totalActiveItems === 0) continue;
-
-          // Determine summary line for this watched user
-          let summaryLine;
-          if (allCompleteForWeek) {
-            summaryLine = `${watchedName} has completed all homework for this week!`;
-          } else if (behindItems > 0) {
-            summaryLine = `${watchedName} is behind this week \u2014 missed ${behindItems} item${behindItems > 1 ? 's' : ''} that can't be caught up.`;
-          } else if (completedTodayTotal > 0) {
-            summaryLine = `${watchedName} did ${completedTodayTotal} homework today. On target for a successful week.`;
-          } else {
-            summaryLine = `${watchedName} didn't accomplish any homework today, but is on target for a successful week.`;
-          }
-
-          apSummaryItems.push(summaryLine);
-        }
-
-        // Only send if we have at least one watched user with active homework
-        if (apSummaryItems.length > 0) {
-          const dateDisplay = yesterdayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Chicago' });
-          try {
-            await sendAPSummary(apEmail, apData.name || 'Friend', apSummaryItems, dateDisplay);
-            apSummaryCount++;
-            await db.doc(`users/${apId}`).update({ lastAPSummaryDate: todayStr });
-          } catch (err) {
-            errors.push({ type: 'ap_summary', ap: apData.name, error: err.message });
-          }
-        }
-      }
-    }
 
     return res.status(200).json({
       success: true,
@@ -1110,7 +935,7 @@ export default async function handler(req, res) {
       smsCount,
       emailCount,
       summaryCount: summaryCount > 0 ? summaryCount : undefined,
-      apSummaryCount: apSummaryCount > 0 ? apSummaryCount : undefined,
+      partnerSectionCount: partnerSectionCount > 0 ? partnerSectionCount : undefined,
       errors: errors.length > 0 ? errors : undefined,
       diagnostics: diagnostics.length > 0 ? diagnostics : undefined
     });
@@ -1160,7 +985,7 @@ async function sendSms(phone, message) {
 /**
  * Send Email via Resend
  */
-async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, behindCount = 0, slot = 1, hwDetail = null) {
+async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, behindCount = 0, slot = 1, hwDetail = null, partnerHtml = null) {
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.RESEND_FROM_EMAIL || 'reminders@counselinghomework.com';
 
@@ -1172,7 +997,11 @@ async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, beh
   const ordinal = slot === 1 ? 'first' : slot === 2 ? 'second' : 'third';
   let subject, bodyText, detailHtml = '';
 
-  if (slot === 1) {
+  if (slot === 1 && currentCount === 0 && partnerHtml) {
+    // Partner-only morning email (this user has no homework of their own today)
+    subject = `Accountability Partner Update`;
+    bodyText = `Here's how your accountability partners are doing:`;
+  } else if (slot === 1) {
     subject = `Homework Reminder: ${currentCount} item${currentCount > 1 ? 's' : ''} this week`;
     bodyText = `Here's your homework for today:`;
 
@@ -1238,7 +1067,8 @@ async function sendEmail(email, name, currentCount, thinkListIncomplete = 0, beh
           <p>Hi ${name},</p>
           <p>${bodyText}</p>
           ${detailHtml}
-          <p>
+          ${partnerHtml || ''}
+          <p style="margin-top: 20px;">
             <a href="https://counselinghomework.com"
                style="display: inline-block; background: #2c5282; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
               Open App
@@ -1373,62 +1203,134 @@ async function sendCounselorSummary(email, counselorName, summaryData, dateDispl
   return response.json();
 }
 
+// An accountability partner is "inactive" if they've logged nothing in this many
+// days (past a grace window for newly-added partners). Mirrors the app's
+// isAPInactive() in UnifiedDashboard.jsx so the email matches the Active tab.
+const AP_INACTIVE_DAYS = 21;
+
 /**
- * Send AP Daily Summary Email
- * One email per accountability partner showing watched users' homework status
+ * Build the "Your Accountability Partners" HTML section for one AP, to append to
+ * their morning (slot-1) reminder. ACTIVE partners only (>=1 completion in the last
+ * 21 days, or added within the grace window). Reports on yesterday + current-week
+ * progress. Returns { html, count } or null when there are no active partners.
  */
-async function sendAPSummary(email, apName, summaryItems, dateDisplay) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.RESEND_FROM_EMAIL || 'reminders@counselinghomework.com';
+async function buildPartnerSection(apData, now) {
+  if (!apData.watchingUsers || !Array.isArray(apData.watchingUsers) || apData.watchingUsers.length === 0) return null;
 
-  if (!apiKey) throw new Error('Resend not configured');
+  const toChicagoDate = (d) => new Date(d.toLocaleDateString('en-US', { timeZone: 'America/Chicago' }));
+  const yesterday = toChicagoDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  const yesterdayKey = yesterday.toDateString();
+  const ms21 = AP_INACTIVE_DAYS * 86400000;
+  const lines = [];
 
-  // Build bullet list HTML
-  let bulletList = '';
-  for (const item of summaryItems) {
-    bulletList += `<li style="margin-bottom: 8px;">${item}</li>\n`;
+  for (const watchEntry of apData.watchingUsers) {
+    const watchedUid = typeof watchEntry === 'string' ? watchEntry : watchEntry.uid;
+    const dataPath = typeof watchEntry === 'object' ? watchEntry.dataPath : null;
+    if (!watchedUid) continue;
+
+    // New-AP grace: don't mark a freshly-added partner inactive
+    let addedAtMs = 0;
+    if (typeof watchEntry === 'object' && watchEntry.addedAt) {
+      const a = watchEntry.addedAt;
+      addedAtMs = a.toDate ? a.toDate().getTime() : new Date(a).getTime();
+    }
+
+    let watchedName = 'Unknown';
+    let watchedUserData = null;
+    try {
+      const wDoc = await db.doc(`users/${watchedUid}`).get();
+      if (wDoc.exists) { watchedUserData = wDoc.data(); watchedName = watchedUserData.name || 'Unknown'; }
+    } catch (e) {
+      try { const au = await admin.auth().getUser(watchedUid); watchedName = au.displayName || au.email || 'Unknown'; } catch (e2) {}
+    }
+
+    // Skip partners on vacation
+    if (watchedUserData && watchedUserData.vacationStart && watchedUserData.vacationEnd) {
+      const vs = watchedUserData.vacationStart.toDate ? watchedUserData.vacationStart.toDate() : new Date(watchedUserData.vacationStart);
+      const ve = watchedUserData.vacationEnd.toDate ? watchedUserData.vacationEnd.toDate() : new Date(watchedUserData.vacationEnd);
+      if (now >= vs && now <= ve) continue;
+    }
+
+    const hwPath = dataPath ? `${dataPath}/homework` : `counselors/${watchedUid}/counselees/${watchedUid}/homework`;
+    let hwSnap;
+    try { hwSnap = await db.collection(hwPath).get(); } catch (e) { continue; }
+    if (hwSnap.empty) continue;
+
+    let completedYesterdayTotal = 0, totalActiveItems = 0, behindItems = 0, allCompleteForWeek = true;
+    let lastCompletionMs = 0;
+
+    for (const hwDoc of hwSnap.docs) {
+      const hw = hwDoc.data();
+      // Track most-recent completion across ALL items (for the active/inactive test)
+      for (const comp of (hw.completions || [])) {
+        const cd = comp.date?.toDate ? comp.date.toDate() : (comp.toDate ? comp.toDate() : new Date(comp));
+        if (cd.getTime() > lastCompletionMs) lastCompletionMs = cd.getTime();
+      }
+      if (hw.status === 'cancelled' || hw.status === 'expired' || hw.status === 'completed') continue;
+      totalActiveItems++;
+
+      const weeklyTarget = hw.weeklyTarget || 7;
+      const dailyCap = hw.dailyCap || 999;
+      const rawAssigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
+      const assignedDate = toChicagoMidnight(rawAssigned);
+      const completions = hw.completions || [];
+      const totalDays = chicagoDaysBetween(assignedDate, yesterday);
+      const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
+      const dayOfWeek = totalDays % 7;
+      const periodStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + weeksSinceAssigned * 7);
+      const daysLeftIncludingToday = 7 - dayOfWeek;
+
+      const dailyCounts = {};
+      let completedYesterday = false;
+      for (const comp of completions) {
+        const cDate = comp.date?.toDate ? comp.date.toDate() : (comp.toDate ? comp.toDate() : new Date(comp));
+        const cChicago = toChicagoMidnight(cDate);
+        if (cChicago >= periodStart && cChicago <= yesterday) {
+          const dk = cChicago.toDateString();
+          dailyCounts[dk] = (dailyCounts[dk] || 0) + 1;
+        }
+        if (cChicago.toDateString() === yesterdayKey) completedYesterday = true;
+      }
+      let weeklyCompleted = 0;
+      for (const c of Object.values(dailyCounts)) weeklyCompleted += Math.min(c, dailyCap);
+      const isFirstWeek = weeksSinceAssigned === 0;
+      const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+      const effectiveTarget = isFirstWeek ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
+      const tasksRemaining = effectiveTarget - weeklyCompleted;
+      const maxPerDay = dailyCap < 999 ? dailyCap : 1;
+      const isBehind = tasksRemaining > daysLeftIncludingToday * maxPerDay;
+      const isWeeklyComplete = weeklyCompleted >= effectiveTarget;
+
+      if (completedYesterday) completedYesterdayTotal++;
+      if (isBehind) behindItems++;
+      if (!isWeeklyComplete) allCompleteForWeek = false;
+    }
+
+    if (totalActiveItems === 0) continue;
+
+    // ACTIVE filter: drop dormant partners (nothing logged in 21 days, past the grace window)
+    const inactive = (now.getTime() - lastCompletionMs >= ms21) && (now.getTime() - addedAtMs >= ms21);
+    if (inactive) continue;
+
+    let line;
+    if (allCompleteForWeek) line = `${watchedName} has completed all homework for this week!`;
+    else if (behindItems > 0) line = `${watchedName} is behind this week \u2014 missed ${behindItems} item${behindItems > 1 ? 's' : ''} that can't be caught up.`;
+    else if (completedYesterdayTotal > 0) line = `${watchedName} did ${completedYesterdayTotal} homework yesterday \u2014 on target this week.`;
+    else line = `${watchedName} didn't log anything yesterday, but is on target this week.`;
+    lines.push(line);
   }
 
+  if (lines.length === 0) return null;
+
+  let bullets = '';
+  for (const l of lines) bullets += `<li style="margin-bottom: 8px;">${l}</li>\n`;
   const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #2c5282; margin-bottom: 4px;">Accountability Partner Update</h2>
-      <p style="color: #718096; margin-top: 0;">${dateDisplay}</p>
-      <p>Hi ${apName},</p>
-      <p>Here's how your accountability partners are doing:</p>
-      <ul style="font-size: 14px; line-height: 1.6;">
-        ${bulletList}
-      </ul>
-      <p>Keep encouraging them!</p>
-      <p style="margin-top: 16px;">
-        <a href="https://counselinghomework.com"
-           style="display: inline-block; background: #2c5282; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">
-          Open App
-        </a>
-      </p>
-      <p style="color: #718096; font-size: 12px; margin-top: 20px;">
-        - Counseling Homework<br>
-        https://counselinghomework.com
-      </p>
-    </div>`;
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: `Counseling Homework <${fromEmail}>`,
-      to: email,
-      subject: `Accountability Partner Update \u2014 ${dateDisplay}`,
-      html
-    })
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'AP summary email send failed');
-  }
-
-  return response.json();
+      <div style="margin-top: 28px; padding-top: 16px; border-top: 2px solid #e2e8f0;">
+        <h3 style="color: #2c5282; margin-bottom: 8px;">Your Accountability Partners</h3>
+        <ul style="font-size: 14px; line-height: 1.6; color: #2d3748;">
+          ${bullets}
+        </ul>
+        <p style="font-size: 14px; color: #4a5568; margin-bottom: 0;">Keep encouraging them!</p>
+      </div>`;
+  return { html, count: lines.length };
 }
