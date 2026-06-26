@@ -5948,11 +5948,11 @@ button.counselor-check-indicator.clickable-check:active {
   font-weight: 400;
 }
 
-/* Think List Drafts Section */
+/* Think List Drafts Section — sits at the bottom, divider above */
 .tl-drafts-section {
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--color-border);
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
 }
 
 .tl-draft-item {

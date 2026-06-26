@@ -64,31 +64,7 @@ export default function ThinkListsTile({
       </div>
 
       <div className="tl-tile-content">
-        {/* Drafts section */}
-        {drafts.length > 0 && canEdit && (
-          <div className="tl-drafts-section">
-            {drafts.map(thinkList => (
-              <div
-                key={thinkList.id}
-                className="tl-draft-item"
-                onClick={() => onView?.(thinkList)}
-              >
-                <span className="tl-draft-label">Continue Draft</span>
-                <span className="tl-draft-date">
-                  {formatShortDate(thinkList.lastAutoSavedAt || thinkList.createdAt)}
-                </span>
-                {thinkList.title && (
-                  <span className="tl-draft-preview">
-                    {thinkList.title.substring(0, 30)}
-                    {thinkList.title.length > 30 ? '...' : ''}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Submitted think lists */}
+        {/* Submitted think lists (active first, retired struck-through) */}
         {submitted.length === 0 && drafts.length === 0 ? (
           <p className="empty-list">No think lists yet.</p>
         ) : submitted.length === 0 ? (
@@ -110,6 +86,30 @@ export default function ThinkListsTile({
               </li>
             ))}
           </ul>
+        )}
+
+        {/* Drafts section — kept at the bottom */}
+        {drafts.length > 0 && canEdit && (
+          <div className="tl-drafts-section">
+            {drafts.map(thinkList => (
+              <div
+                key={thinkList.id}
+                className="tl-draft-item"
+                onClick={() => onView?.(thinkList)}
+              >
+                <span className="tl-draft-label">Continue Draft</span>
+                <span className="tl-draft-date">
+                  {formatShortDate(thinkList.lastAutoSavedAt || thinkList.createdAt)}
+                </span>
+                {thinkList.title && (
+                  <span className="tl-draft-preview">
+                    {thinkList.title.substring(0, 30)}
+                    {thinkList.title.length > 30 ? '...' : ''}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
