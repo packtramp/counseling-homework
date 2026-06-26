@@ -275,7 +275,7 @@ export default async function handler(req, res) {
     const msPerDay = 1000 * 60 * 60 * 24;
     const msPerWeek = 7 * msPerDay;
 
-    const allUsersSnap = await db.collection('users').where('emailReminders', '==', true).get();
+    const allUsersSnap = await db.collection('users').get();
     const auditRows = [];
     let totalSlot1 = 0, totalSlot2 = 0, totalSlot3 = 0, totalSkipped = 0;
 
@@ -505,8 +505,11 @@ export default async function handler(req, res) {
   console.log(`Reminder check at ${chicagoTime.toISOString()} (Chicago), day=${currentDay}, time=${currentTime}, hour=${currentHour}`);
 
   try {
-    // === PERSONAL REMINDERS: Send to ALL users with emailReminders enabled ===
-    const allUsersSnap = await db.collection('users').where('emailReminders', '==', true).get();
+    // === PERSONAL REMINDERS: Send to ALL users (email AND/OR SMS opt-ins) ===
+    // NOTE: must fetch ALL users, not just emailReminders==true — SMS-only opt-ins
+    // (emailReminders=false, smsReminders=true) would otherwise be silently dropped.
+    // Per-user gating happens below via `if (!wantsSms && !wantsEmail) continue;`.
+    const allUsersSnap = await db.collection('users').get();
     let smsCount = 0;
     let emailCount = 0;
     let partnerSectionCount = 0; // morning emails that included an accountability-partner section
@@ -545,7 +548,7 @@ export default async function handler(req, res) {
       const email = userData.email || counselee.email;
       const phone = userData.phone || counselee.phone;
       const wantsSms = (userData.smsReminders || counselee.smsReminders) && phone;
-      const wantsEmail = email; // emailReminders already filtered by query
+      const wantsEmail = (userData.emailReminders || counselee.emailReminders) && email;
       if (!wantsSms && !wantsEmail) continue;
 
       // Schedule from user doc (primary) or counselee doc (fallback)
