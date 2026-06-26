@@ -137,7 +137,7 @@ export default function HomeworkTile({
 
   // Helper: Check if weekly target is fully met for this period
   const isWeeklyComplete = (item) => {
-    if (item.status === 'cancelled' || item.status === 'expired') return false;
+    if (item.status === 'cancelled' || item.status === 'expired' || item.status === 'completed') return false;
     const progress = getWeeklyProgress(item);
     return progress.current >= progress.target;
   };
@@ -651,8 +651,10 @@ export default function HomeworkTile({
               {completedHomework.map(item => {
                 const progress = getWeeklyProgress(item);
                 const lastDate = getLastCompletionDate(item);
+                const isCompleted = item.status === 'completed';
                 const isCancelled = item.status === 'cancelled' || item.status === 'expired';
-                const canUncheck = !isCancelled && onUncheck;
+                const isRetired = isCancelled || isCompleted;
+                const canUncheck = !isRetired && onUncheck;
                 const isEditing = editingHomework?.id === item.id;
                 const isBehind = isItemBehind(item);
 
@@ -766,7 +768,7 @@ export default function HomeworkTile({
                 const streak = getStreakInfo(item);
 
                 return (
-                  <li key={item.id} className={`homework-done-item ${isCancelled ? 'cancelled' : ''} ${isBehind ? 'behind' : ''}`}>
+                  <li key={item.id} className={`homework-done-item ${isRetired ? 'cancelled' : ''} ${isBehind ? 'behind' : ''}`}>
                     {canUncheck ? (
                       <button
                         className="counselor-check-indicator checked clickable-check"
@@ -781,16 +783,16 @@ export default function HomeworkTile({
                       </span>
                     )}
                     <a className="done-item-title clickable" onClick={() => startEdit(item)}>{item.title}</a>
-                    <span className="done-item-date">{isCancelled ? 'Cancelled' : formatShortDate(lastDate)}</span>
+                    <span className="done-item-date">{isCompleted ? 'Completed' : isCancelled ? 'Cancelled' : formatShortDate(lastDate)}</span>
                     <span className="done-item-progress">
-                      {progress.current}/{progress.target}
-                      {streak && !isCancelled && (
+                      {!isCompleted && `${progress.current}/${progress.target}`}
+                      {streak && !isRetired && (
                         <span className={`streak-info ${streak.isPositive ? 'streak-positive' : 'streak-negative'}`}>
                           {streak.isPositive ? ` · ${streak.streak}wk` : ` · missed ${streak.streak}wk`}
                         </span>
                       )}
                     </span>
-                    {isCancelled && onReactivate && (
+                    {isRetired && onReactivate && (
                       <button
                         className="reinstate-btn"
                         onClick={() => onReactivate(item.id)}

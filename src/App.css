@@ -5937,6 +5937,17 @@ button.counselor-check-indicator.clickable-check:active {
   color: var(--color-text-muted);
 }
 
+/* Retired (expired/completed) think list — struck-through in place, kept for reference */
+.think-list-item.retired {
+  opacity: 0.6;
+}
+
+.think-list-item.retired .think-list-title-preview {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
 /* Think List Drafts Section */
 .tl-drafts-section {
   margin-bottom: 1rem;

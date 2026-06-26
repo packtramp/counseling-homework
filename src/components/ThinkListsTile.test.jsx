@@ -41,6 +41,21 @@ describe('ThinkListsTile', () => {
       render(<ThinkListsTile thinkLists={tls} role="counselee" />);
       expect(screen.getByText(/Continue Draft/)).toBeInTheDocument();
     });
+
+    it('shows expired think lists struck-through in place, not counted in the header', () => {
+      const tls = [
+        makeTL({ id: 'tl-active', title: 'Active TL' }),
+        makeTL({ id: 'tl-exp', title: 'Retired TL', status: 'expired' })
+      ];
+      const { container } = render(<ThinkListsTile thinkLists={tls} />);
+      // Both remain visible (retired is kept for reference, not hidden)
+      expect(screen.getByText('Active TL')).toBeInTheDocument();
+      expect(screen.getByText('Retired TL')).toBeInTheDocument();
+      // Header counts active only — retired no longer counts against you
+      expect(screen.getByText(/Think Lists \(1\)/)).toBeInTheDocument();
+      // Retired item carries the struck-through styling hook
+      expect(container.querySelector('.think-list-item.retired')).toBeTruthy();
+    });
   });
 
   describe('Interactions', () => {

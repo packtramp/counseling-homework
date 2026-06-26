@@ -205,8 +205,10 @@ export default function JournalingPage({
     setContent(newEntry + separator + content);
     setDailyEntry('');
 
-    // Auto-complete linked homework (once per day - dailyCap is 1)
-    if (linkedHw && basePath && role === 'counselee') {
+    // Auto-complete linked homework (once per day - dailyCap is 1).
+    // Counts whether the counselee OR the counselor (doing it together) adds the entry;
+    // gated on basePath + not read-only so accountability partners don't trigger it.
+    if (linkedHw && basePath && !isReadOnly) {
       const completions = linkedHw.completions || [];
       const todayStr = now.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
       const alreadyDoneToday = completions.some(c => {

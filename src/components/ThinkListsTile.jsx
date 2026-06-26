@@ -32,7 +32,10 @@ export default function ThinkListsTile({
     return false;
   };
   const drafts = thinkLists.filter(t => t.status === 'draft');
-  const submitted = thinkLists.filter(t => t.status !== 'draft' && !isExpired(t));
+  const active = thinkLists.filter(t => t.status !== 'draft' && !isExpired(t));
+  const retired = thinkLists.filter(t => t.status !== 'draft' && isExpired(t));
+  // Active first, then retired (struck-through) at the bottom — kept visible for reference, no longer counted
+  const submitted = [...active, ...retired];
 
   const formatDate = (timestamp) => {
     if (!timestamp) return 'No date';
@@ -50,7 +53,7 @@ export default function ThinkListsTile({
     <div className="think-lists-tile">
       <div className="tl-tile-header">
         <span className="tl-tile-title">
-          Think Lists ({submitted.length})
+          Think Lists ({active.length})
           {drafts.length > 0 && canEdit && (
             <span className="tl-draft-count"> + {drafts.length} draft{drafts.length > 1 ? 's' : ''}</span>
           )}
@@ -95,14 +98,14 @@ export default function ThinkListsTile({
             {submitted.map(thinkList => (
               <li
                 key={thinkList.id}
-                className="think-list-item"
+                className={`think-list-item ${isExpired(thinkList) ? 'retired' : ''}`}
                 onClick={() => onView?.(thinkList)}
               >
                 <span className="think-list-title-preview">
                   {thinkList.title || 'Untitled'}
                 </span>
                 <span className="think-list-date">
-                  {formatDate(thinkList.createdAt)}
+                  {isExpired(thinkList) ? 'Completed' : formatDate(thinkList.createdAt)}
                 </span>
               </li>
             ))}

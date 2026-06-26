@@ -71,6 +71,21 @@ describe('HomeworkTile', () => {
       expect(screen.getByText('Cancelled Task')).toBeInTheDocument();
       expect(screen.getByText('Cancelled')).toBeInTheDocument();
     });
+
+    it('shows retired (completed) items in Done tab labeled Completed, not in Current', () => {
+      const homework = [
+        createHomework({ id: 'hw-completed', title: 'One-Time Task', status: 'completed', recurring: false })
+      ];
+      render(<HomeworkTile homework={homework} role="counselee" />);
+
+      // Not in Current
+      expect(screen.getByText('Current (0)')).toBeInTheDocument();
+      // In Done, labeled Completed (not Cancelled)
+      fireEvent.click(screen.getByText('Done (1)'));
+      expect(screen.getByText('One-Time Task')).toBeInTheDocument();
+      expect(screen.getByText('Completed')).toBeInTheDocument();
+      expect(screen.queryByText('Cancelled')).not.toBeInTheDocument();
+    });
   });
 
   describe('Counselee View - Check Off', () => {

@@ -451,7 +451,7 @@ export default function UnifiedDashboard() {
             const status = calculateAccountabilityStatus(homework, profile);
             const liveStreak = calculateAPStreak(homework, profile);
             const liveWeekStreak = calculateWeekStreak(homework);
-            const behindCount = homework.filter(h => h.status !== 'cancelled' && h.status !== 'expired' && isItemBehind(h, new Date(), profile)).length;
+            const behindCount = homework.filter(h => h.status !== 'cancelled' && h.status !== 'expired' && h.status !== 'completed' && isItemBehind(h, new Date(), profile)).length;
             setCounseleeLiveStatus(prev => ({
               ...prev,
               [counselee.id]: { status, streak: liveStreak, weekStreak: liveWeekStreak, behindCount }
@@ -1241,9 +1241,12 @@ export default function UnifiedDashboard() {
   const handleMyReactivateHomework = async (homeworkId) => {
     const basePath = getMyBasePath();
     const item = myHomework.find(h => h.id === homeworkId);
+    // Reinstating a retired non-recurring item gives it a fresh week so it doesn't re-retire next sweep
+    const wasCompleted = item?.status === 'completed';
     await updateDoc(doc(db, `${basePath}/homework`, homeworkId), {
       status: 'active',
-      cancelledAt: null
+      cancelledAt: null,
+      ...(wasCompleted ? { assignedDate: serverTimestamp(), completedAt: null } : {})
     });
     await addDoc(collection(db, `${basePath}/activityLog`), {
       action: 'homework_reactivated',
@@ -1781,9 +1784,12 @@ export default function UnifiedDashboard() {
   const handleCounseleeReactivateHomework = async (homeworkId) => {
     const basePath = `counselors/${user.uid}/counselees/${selectedCounselee.id}`;
     const item = counseleeHomework.find(h => h.id === homeworkId);
+    // Reinstating a retired non-recurring item gives it a fresh week so it doesn't re-retire next sweep
+    const wasCompleted = item?.status === 'completed';
     await updateDoc(doc(db, `${basePath}/homework`, homeworkId), {
       status: 'active',
-      cancelledAt: null
+      cancelledAt: null,
+      ...(wasCompleted ? { assignedDate: serverTimestamp(), completedAt: null } : {})
     });
     await addDoc(collection(db, `${basePath}/activityLog`), {
       action: 'homework_reactivated',

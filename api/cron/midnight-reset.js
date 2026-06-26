@@ -100,7 +100,7 @@ export default async function handler(req, res) {
 
       for (const hwDoc of homeworkSnap.docs) {
         const hw = hwDoc.data();
-        if (hw.status === 'cancelled' || hw.status === 'expired') continue;
+        if (hw.status === 'cancelled' || hw.status === 'expired' || hw.status === 'completed') continue;
 
         const completions = hw.completions || [];
 
@@ -164,6 +164,7 @@ export default async function handler(req, res) {
     // Also backfills expiresAt for legacy homework that has durationWeeks but no expiresAt.
     let expiredCancelled = 0;
     let expiresAtBackfilled = 0;
+    let nonRecurringRetired = 0;
     // NOTE: counselor docs are phantom parents (subcollections only, no document body).
     // Use listDocuments() — .get() on this collection returns zero documents.
     const allCounselorRefs = await db.collection('counselors').listDocuments();
@@ -175,6 +176,23 @@ export default async function handler(req, res) {
         for (const hwDoc of hwSnap.docs) {
           const hw = hwDoc.data();
           const hwRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/homework/${hwDoc.id}`);
+
+          // Retire a NON-RECURRING plain homework once its single week has elapsed → 'completed'.
+          // Recurring items repeat forever; linked Think List / Journal items use the duration/expiry path below.
+          if (hw.recurring === false && !hw.linkedThinkListId && !hw.linkedJournalingId) {
+            const assignedNR = hw.assignedDate?.toDate ? hw.assignedDate.toDate()
+              : new Date(hw.assignedDate || hw.createdAt?.toDate?.() || now);
+            const weekEnd = new Date(assignedNR.getTime() + 7 * 24 * 60 * 60 * 1000);
+            if (weekEnd <= now) {
+              await hwRef.update({
+                status: 'completed',
+                completedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+              nonRecurringRetired++;
+              continue;
+            }
+          }
 
           // Backfill: has durationWeeks but no expiresAt — calculate from assignedDate
           if (hw.durationWeeks && !hw.expiresAt) {
@@ -227,7 +245,7 @@ export default async function handler(req, res) {
         }
       }
     }
-    console.log(`Expired homework: ${expiredCancelled} cancelled, ${expiresAtBackfilled} backfilled`);
+    console.log(`Expired homework: ${expiredCancelled} cancelled, ${expiresAtBackfilled} backfilled, ${nonRecurringRetired} non-recurring retired`);
 
     // ═══ PHASE 2: BEHIND COUNT + STREAK UPDATES ═══
     // Counselor docs are phantom parents — must use listDocuments().
@@ -275,7 +293,7 @@ export default async function handler(req, res) {
 
         for (const hwDoc of homeworkSnap.docs) {
           const hw = hwDoc.data();
-          if (hw.status === 'cancelled' || hw.status === 'expired') continue;
+          if (hw.status === 'cancelled' || hw.status === 'expired' || hw.status === 'completed') continue;
 
           const completions = hw.completions || [];
           const weeklyTarget = hw.weeklyTarget || 7;

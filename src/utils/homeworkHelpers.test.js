@@ -260,6 +260,12 @@ describe('isItemBehind', () => {
     expect(isItemBehind(item)).toBe(false);
   });
 
+  it('returns false for completed (retired) items even when target unmet', () => {
+    // Assigned long ago, target never met — but retired, so it must not count as behind
+    const item = { status: 'completed', weeklyTarget: 7, completions: [], assignedDate: makeDate(2026, 1, 1) };
+    expect(isItemBehind(item, makeDate(2026, 3, 1))).toBe(false);
+  });
+
   it('returns false if can still catch up', () => {
     const assignedDate = makeDate(2026, 2, 1); // Sunday
     const now = makeDate(2026, 2, 2); // Monday (day 1, 6 days remaining)
