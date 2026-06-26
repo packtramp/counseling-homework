@@ -21,7 +21,7 @@ import JournalingPage from '../components/JournalingPage';
 import AccountabilityModal from '../components/AccountabilityModal';
 import AccountabilityPartnersTile from '../components/AccountabilityPartnersTile';
 import AccountabilityPartnersModal from '../components/AccountabilityPartnersModal';
-import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateWeekStreak, isOnVacation } from '../utils/homeworkHelpers';
+import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateTotalDays, isOnVacation } from '../utils/homeworkHelpers';
 import { getLinkedSpouse as getLinkedSpouseUtil } from '../utils/jointSession';
 import VacationBanner from '../components/VacationBanner';
 import OnboardingModal from '../components/OnboardingModal';
@@ -433,7 +433,7 @@ export default function UnifiedDashboard() {
     const setupListeners = async () => {
       for (const counselee of counselees) {
         if (!counselee.uid) {
-          setCounseleeLiveStatus(prev => ({ ...prev, [counselee.id]: { status: 'neutral', streak: 0, weekStreak: 0, behindCount: 0 } }));
+          setCounseleeLiveStatus(prev => ({ ...prev, [counselee.id]: { status: 'neutral', streak: 0, totalDays: 0, behindCount: 0 } }));
           continue;
         }
         try {
@@ -450,16 +450,16 @@ export default function UnifiedDashboard() {
             const homework = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             const status = calculateAccountabilityStatus(homework, profile);
             const liveStreak = calculateAPStreak(homework, profile);
-            const liveWeekStreak = calculateWeekStreak(homework);
+            const liveTotalDays = calculateTotalDays(homework);
             const behindCount = homework.filter(h => h.status !== 'cancelled' && h.status !== 'expired' && h.status !== 'completed' && isItemBehind(h, new Date(), profile)).length;
             setCounseleeLiveStatus(prev => ({
               ...prev,
-              [counselee.id]: { status, streak: liveStreak, weekStreak: liveWeekStreak, behindCount }
+              [counselee.id]: { status, streak: liveStreak, totalDays: liveTotalDays, behindCount }
             }));
           });
           unsubscribers.push(unsub);
         } catch (err) {
-          setCounseleeLiveStatus(prev => ({ ...prev, [counselee.id]: { status: 'unknown', streak: 0, weekStreak: 0, behindCount: 0 } }));
+          setCounseleeLiveStatus(prev => ({ ...prev, [counselee.id]: { status: 'unknown', streak: 0, totalDays: 0, behindCount: 0 } }));
         }
       }
     };
@@ -523,7 +523,7 @@ export default function UnifiedDashboard() {
             const status = calculateAccountabilityStatus(homework, personProfile);
             // Calculate streak live from homework completions (not stale closure)
             const liveStreak = calculateAPStreak(homework, personProfile);
-            const liveWeekStreak = calculateWeekStreak(homework);
+            const liveTotalDays = calculateTotalDays(homework);
             // Find most recent completion timestamp across all homework
             let lastCompletion = 0;
             for (const hw of homework) {
@@ -534,7 +534,7 @@ export default function UnifiedDashboard() {
             }
             setWatchingUsersStatus(prev => ({
               ...prev,
-              [person.uid]: { status, streak: liveStreak, weekStreak: liveWeekStreak, photoUrl, onVacation: status === 'vacation', lastCompletion }
+              [person.uid]: { status, streak: liveStreak, totalDays: liveTotalDays, photoUrl, onVacation: status === 'vacation', lastCompletion }
             }));
           }, (error) => {
             console.error('Listener error for AP homework (' + person.name + '):', error.code, error.message);
@@ -2535,21 +2535,21 @@ export default function UnifiedDashboard() {
               {(() => {
                 const statusData = watchingUsersStatus[selectedWatchedUser.uid] || {};
                 const streak = statusData.streak || 0;
-                const weekStr = statusData.weekStreak || 0;
+                const totalDays = statusData.totalDays || 0;
                 return (
                   <>
                     <div className="ap-info-streak-group">
                       <div className="ap-info-streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
                         {streak}
                       </div>
-                      <span className="ap-info-streak-label">day{streak !== 1 ? 's' : ''}</span>
+                      <span className="ap-info-streak-label">streak</span>
                     </div>
-                    {weekStr > 0 && (
+                    {totalDays > 0 && (
                       <div className="ap-info-streak-group">
                         <div className="ap-info-streak-circle" style={{ backgroundColor: '#2b6cb0' }}>
-                          {weekStr}
+                          {totalDays}
                         </div>
-                        <span className="ap-info-streak-label">week{weekStr !== 1 ? 's' : ''}</span>
+                        <span className="ap-info-streak-label">days</span>
                       </div>
                     )}
                   </>
@@ -2624,11 +2624,11 @@ export default function UnifiedDashboard() {
               <p className="greeting">Hi, {myData?.name || userProfile?.name || 'there'}!</p>
               {myHomework.filter(h => h.status === 'active').length > 0 && (() => {
                 const dayStreak = calculateAPStreak(myHomework, userProfile);
-                const weekStr = calculateWeekStreak(myHomework);
-                return (dayStreak > 0 || weekStr > 0) ? (
+                const totalDays = calculateTotalDays(myHomework);
+                return (dayStreak > 0 || totalDays > 0) ? (
                   <div className="personal-streak">
-                    {dayStreak > 0 && <span className="streak-badge day-streak" title="Consecutive days with homework activity">{dayStreak} day{dayStreak !== 1 ? 's' : ''}</span>}
-                    {weekStr > 0 && <span className="streak-badge week-streak" title="Consecutive weeks with all targets met">{weekStr} week{weekStr !== 1 ? 's' : ''}</span>}
+                    {dayStreak > 0 && <span className="streak-badge day-streak" title="Current streak — consecutive days; resets if you miss a target">{dayStreak} day streak</span>}
+                    {totalDays > 0 && <span className="streak-badge week-streak" title="Total days you've done any homework — never resets">{totalDays} total days</span>}
                   </div>
                 ) : null;
               })()}
@@ -2786,7 +2786,7 @@ export default function UnifiedDashboard() {
                   const statusData = watchingUsersStatus[person.uid] || {};
                   const status = statusData.status || 'unknown';
                   const streak = statusData.streak || 0;
-                  const weekStreak = statusData.weekStreak || 0;
+                  const totalDays = statusData.totalDays || 0;
                   const photoUrl = statusData.photoUrl || null;
                   return (
                     <div
@@ -2810,13 +2810,13 @@ export default function UnifiedDashboard() {
                             <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
                               {streak}
                             </div>
-                            <div className="streak-label">days</div>
+                            <div className="streak-label">streak</div>
                           </div>
                           <div className="streak-circle-container">
-                            <div className="streak-circle streak-circle-week" style={{ backgroundColor: weekStreak > 0 ? '#2b6cb0' : '#a0aec0' }}>
-                              {weekStreak}
+                            <div className="streak-circle streak-circle-week" style={{ backgroundColor: totalDays > 0 ? '#2b6cb0' : '#a0aec0' }}>
+                              {totalDays}
                             </div>
-                            <div className="streak-label">weeks</div>
+                            <div className="streak-label">days</div>
                           </div>
                         </div>
                       </div>
@@ -2871,7 +2871,7 @@ export default function UnifiedDashboard() {
                     const liveData = counseleeLiveStatus[counselee.id] || {};
                     const liveStatus = liveData.status || 'unknown';
                     const streak = liveData.streak || 0;
-                    const weekStreak = liveData.weekStreak || 0;
+                    const totalDays = liveData.totalDays || 0;
                     const behindCount = liveData.behindCount || 0;
                     const tileStatus = !counselee.uid ? 'no-login' : counselee.graduated ? 'graduated' : liveStatus === 'red' ? 'behind' : liveStatus;
                     const statusLabel = !counselee.uid ? 'No login' : counselee.graduated ? 'Graduated' : behindCount > 0 ? `${behindCount} behind` : getAPStatusLabel(liveStatus);
@@ -2897,13 +2897,13 @@ export default function UnifiedDashboard() {
                               <div className="streak-circle" style={{ backgroundColor: streak > 0 ? '#38a169' : '#a0aec0' }}>
                                 {streak}
                               </div>
-                              <div className="streak-label">days</div>
+                              <div className="streak-label">streak</div>
                             </div>
                             <div className="streak-circle-container">
-                              <div className="streak-circle streak-circle-week" style={{ backgroundColor: weekStreak > 0 ? '#2b6cb0' : '#a0aec0' }}>
-                                {weekStreak}
+                              <div className="streak-circle streak-circle-week" style={{ backgroundColor: totalDays > 0 ? '#2b6cb0' : '#a0aec0' }}>
+                                {totalDays}
                               </div>
-                              <div className="streak-label">weeks</div>
+                              <div className="streak-label">days</div>
                             </div>
                           </div>
                         </div>

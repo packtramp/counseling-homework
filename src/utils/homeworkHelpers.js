@@ -35,6 +35,14 @@ export const dayBucket = (d) => {
 };
 
 /**
+ * Date the stricter day-streak reset rules took effect.
+ * Misses BEFORE this date are grandfathered (judged with the old lenient rule),
+ * so nobody's existing streak drops on rollout — the new "reset when an item
+ * becomes unreachable" rule only judges days on/after this date.
+ */
+export const STREAK_RULES_START = new Date(2026, 5, 26); // 2026-06-26, local midnight
+
+/**
  * Count calendar days between two midnight-normalized dates (DST-safe).
  * Uses Math.round to handle DST offsets where ms difference is 23 or 25 hours
  * instead of exactly 24. Both dates should be at local midnight.
@@ -611,13 +619,12 @@ export const getDayDetails = (homework, targetDate) => {
  * @param {Array} homework - Array of homework items
  * @returns {number} Day streak count
  */
-export const calculateAPStreak = (homework, profile) => {
+export const calculateAPStreak = (homework, profile, now = new Date()) => {
   if (!homework || homework.length === 0) return 0;
   const activeHomework = homework.filter(h => h.status === 'active');
   if (activeHomework.length === 0) return 0;
 
   const msPerDay = 24 * 60 * 60 * 1000;
-  const now = new Date();
   const todayBucket = dayBucket(now);
   const todayMs = todayBucket.getTime();
 
@@ -694,6 +701,60 @@ export const calculateAPStreak = (homework, profile) => {
     return false;
   };
 
+  // The day an active item becomes UNREACHABLE for its week: it was savable
+  // entering the day but is NOT savable entering the next day. Fires exactly ONCE
+  // per missed week per item — after that the item is already unreachable, so
+  // "savable entering today" is false and it can't fire again that week (it drops
+  // out of the check on its own, no flag needed). Each item is judged on its own
+  // 7-day grid (its own assignedDate), so items can be on different cycles.
+  const isFailureEventOnDate = (checkDate) => {
+    for (const hw of activeHomework) {
+      const weeklyTarget = hw.weeklyTarget || 7;
+      const dailyCap = hw.dailyCap || 999;
+      const maxPerDay = dailyCap < 999 ? dailyCap : 1;
+
+      let rawAssigned;
+      if (hw.assignedDate?.toDate) rawAssigned = hw.assignedDate.toDate();
+      else if (hw.assignedDate) rawAssigned = new Date(hw.assignedDate);
+      else continue;
+      const assigned = toMidnight(rawAssigned);
+      if (checkDate < assigned) continue;
+
+      const daysSinceAssigned = Math.round((checkDate - assigned) / msPerDay);
+      const weeksSinceAssigned = Math.floor(daysSinceAssigned / 7);
+      const dayOfWeek = daysSinceAssigned % 7;
+      const weekStartDate = new Date(assigned.getFullYear(), assigned.getMonth(), assigned.getDate() + weeksSinceAssigned * 7);
+
+      // Completions this homework-week, split into "before checkDate" and "on checkDate"
+      const beforeCounts = {};
+      let onDayRaw = 0;
+      for (const c of (hw.completions || [])) {
+        const cDay = dayBucket(c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c)));
+        if (cDay >= weekStartDate && cDay < checkDate) {
+          beforeCounts[cDay.getTime()] = (beforeCounts[cDay.getTime()] || 0) + 1;
+        } else if (cDay.getTime() === checkDate.getTime()) {
+          onDayRaw++;
+        }
+      }
+      let before = 0;
+      for (const cnt of Object.values(beforeCounts)) before += Math.min(cnt, dailyCap);
+      const onDay = Math.min(onDayRaw, dailyCap);
+
+      const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
+      const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
+
+      const daysLeftIncludingToday = 7 - dayOfWeek;
+      // Q1: savable entering today?   Q2: savable entering tomorrow (after today's work)?
+      const savableEnteringToday = (before + daysLeftIncludingToday * maxPerDay) >= effectiveTarget;
+      const savableEnteringTomorrow = (before + onDay + (daysLeftIncludingToday - 1) * maxPerDay) >= effectiveTarget;
+
+      if (savableEnteringToday && !savableEnteringTomorrow) {
+        return true; // Yes → No : this is the tip-over day for this item
+      }
+    }
+    return false;
+  };
+
   // Walk backward from today using date-based subtraction (not ms arithmetic)
   // to avoid DST spring-forward skipping a day when subtracting 86400000ms
   let streak = 0;
@@ -734,23 +795,48 @@ export const calculateAPStreak = (homework, profile) => {
       continue;
     }
 
-    if (hasActivity) {
-      // Did something → streak increases
-      streak++;
-    } else if (daysBack === 0) {
-      // Today isn't over yet — don't break streak for incomplete today
-      // Just stagnate (no increment, no break)
-    } else {
-      // Past day with no activity → check if any active item was irrecoverably behind
-      if (isAnyItemBehindOnDate(checkDate)) {
-        break; // behind with no recovery → streak ends
+    // Does this past day END the streak? (today, daysBack 0, never breaks — not over yet)
+    if (daysBack > 0) {
+      if (checkDate >= STREAK_RULES_START) {
+        // New rule: the day an item became unreachable resets the streak — fires once,
+        // even if other work was done that day. A blown item then drops out on its own.
+        if (isFailureEventOnDate(checkDate)) break;
+      } else {
+        // Grandfathered (before rollout): old lenient rule — only a fully empty,
+        // irrecoverably-behind day breaks. Keeps existing streaks intact on launch.
+        if (!hasActivity && isAnyItemBehindOnDate(checkDate)) break;
       }
-      // Has cushion → stagnate (don't increment, don't break)
     }
+
+    if (hasActivity) {
+      // Did something → streak increases (any item counts)
+      streak++;
+    }
+    // else: today not over, or a past day with buffer / already-blown item → stagnate
     daysBack++;
   }
 
   return streak;
+};
+
+/**
+ * Total Days: lifetime count of distinct days with at least one completion.
+ * Ticks up whenever ANYTHING is checked off; NEVER resets. Counts across all
+ * homework (including retired/cancelled items' past activity). Uses the 3am
+ * rollover so a 1am click counts for the prior day.
+ * @param {Array} homework - Array of homework items
+ * @returns {number} Distinct active days, all-time
+ */
+export const calculateTotalDays = (homework) => {
+  if (!homework || homework.length === 0) return 0;
+  const daySet = new Set();
+  for (const hw of homework) {
+    for (const c of (hw.completions || [])) {
+      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
+      daySet.add(dayBucket(cDate).getTime());
+    }
+  }
+  return daySet.size;
 };
 
 /**

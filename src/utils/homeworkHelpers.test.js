@@ -9,7 +9,9 @@ import {
   parseTime,
   formatTimeDisplay,
   dayBucket,
-  DAY_ROLLOVER_HOUR
+  DAY_ROLLOVER_HOUR,
+  calculateAPStreak,
+  calculateTotalDays
 } from './homeworkHelpers';
 
 // Helper to create a date at a specific time
@@ -306,6 +308,48 @@ describe('isItemBehind', () => {
     };
 
     expect(isItemBehind(item, now)).toBe(false);
+  });
+});
+
+describe('calculateAPStreak — strict reset + grandfather', () => {
+  // 6x/week item (max 1/day). Scenario: week 1 days 0-6 all done (target met),
+  // week 2 day7 done, days 8-9 MISSED (becomes unreachable on day9), days 10-13 done.
+  // Active completion days = [0,1,2,3,4,5,6,7,10,11,12,13] = 12 distinct days.
+  const buildItem = (assigned, target = 6) => ({
+    status: 'active',
+    weeklyTarget: target,
+    assignedDate: assigned,
+    completions: [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13].map(off =>
+      makeCompletion(new Date(assigned.getFullYear(), assigned.getMonth(), assigned.getDate() + off, 12, 0))
+    )
+  });
+
+  it('resets on the unreachable day, then climbs (no whack-a-mole) — post-cutover', () => {
+    const assigned = makeDate(2026, 7, 6);        // after STREAK_RULES_START (2026-06-26)
+    const now = makeDate(2026, 7, 19, 12);        // day 13
+    // Reset fired on day 9 (the miss that made 6 impossible); days 10-13 climb = 4
+    expect(calculateAPStreak([buildItem(assigned)], null, now)).toBe(4);
+  });
+
+  it('grandfathers the same misses before the cutover (old lenient rule, no reset)', () => {
+    const assigned = makeDate(2026, 6, 1);        // before STREAK_RULES_START
+    const now = makeDate(2026, 6, 14, 12);        // day 13
+    // Old rule never reconciles the miss → all 12 active days counted
+    expect(calculateAPStreak([buildItem(assigned)], null, now)).toBe(12);
+  });
+
+  it('total days counts every distinct completion day and never resets', () => {
+    const assigned = makeDate(2026, 7, 6);
+    expect(calculateTotalDays([buildItem(assigned)])).toBe(12);
+  });
+
+  it('total days is unaffected by a streak reset', () => {
+    // Even though the streak reset to a small number, total days stays at the full 12
+    const assigned = makeDate(2026, 7, 6);
+    const now = makeDate(2026, 7, 19, 12);
+    const hw = [buildItem(assigned)];
+    expect(calculateAPStreak(hw, null, now)).toBe(4);
+    expect(calculateTotalDays(hw)).toBe(12);
   });
 });
 
