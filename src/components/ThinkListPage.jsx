@@ -175,6 +175,40 @@ export default function ThinkListPage({
     }
   };
 
+  // Return an active think list to draft: parks it (out of the active list, stops
+  // counting) while keeping all content so it can be re-submitted later.
+  const [returningToDraft, setReturningToDraft] = useState(false);
+  const handleReturnToDraft = async () => {
+    if (!basePath || !currentThinkListId || returningToDraft) return;
+    setReturningToDraft(true);
+    try {
+      const linkedId = editingThinkList?.linkedHomeworkId || linkedHw?.id || null;
+      await updateDoc(doc(db, `${basePath}/thinkLists`, currentThinkListId), {
+        status: 'draft',
+        linkedHomeworkId: null,
+        updatedAt: serverTimestamp()
+      });
+      // Cancel the linked homework so it stops counting against the counselee
+      if (linkedId) {
+        await updateDoc(doc(db, `${basePath}/homework`, linkedId), {
+          status: 'cancelled',
+          updatedAt: serverTimestamp()
+        });
+      }
+      await addDoc(collection(db, `${basePath}/activityLog`), {
+        action: 'thinklist_returned_to_draft',
+        actor: role,
+        actorName: userProfile?.name || role,
+        details: `Returned Think List to draft: ${title || 'Untitled'}`,
+        timestamp: serverTimestamp()
+      });
+      onClose();
+    } catch (error) {
+      console.error('Failed to return to draft:', error);
+      setReturningToDraft(false);
+    }
+  };
+
   // Get current form data as object
   const getFormData = useCallback(() => ({
     title,
@@ -737,6 +771,11 @@ export default function ThinkListPage({
             <button type="button" className="tl-footer-btn tl-submit-btn" onClick={handleSubmit} disabled={!title.trim() || !verse.trim() || !thinkListContent.trim() || !attitudePutOff.trim() || !attitudePutOn.trim() || !thoughtsPutOff.trim() || !thoughtsPutOn.trim() || !actionsPutOff.trim() || !actionsPutOn.trim()}>
               {editingThinkList?.status === 'active' ? 'Update' : 'Submit'}
             </button>
+            {editingThinkList?.status === 'active' && currentThinkListId && (
+              <button type="button" className="tl-footer-btn tl-draft-btn" onClick={handleReturnToDraft} disabled={returningToDraft} title="Park this Think List as a draft — stops counting, keeps content">
+                {returningToDraft ? 'Saving...' : 'Return to Draft'}
+              </button>
+            )}
             {editingThinkList && currentThinkListId && (
               <button type="button" className="tl-footer-btn tl-delete-btn" onClick={handleDelete}>
                 Delete
