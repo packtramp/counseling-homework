@@ -564,7 +564,7 @@ export default function JournalingPage({
         </button>
         {!isReadOnly && (
           <>
-            <button type="button" className="jn-footer-btn jn-submit-btn" onClick={handleSubmit} disabled={!title.trim() || !content.trim()}>
+            <button type="button" className="jn-footer-btn jn-submit-btn" onClick={handleSubmit} disabled={role === 'counselor' ? !title.trim() : (!title.trim() || !content.trim())}>
               {currentJournalId ? 'Update' : 'Submit'}
             </button>
             {currentJournalId && (
