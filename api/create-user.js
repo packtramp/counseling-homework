@@ -125,6 +125,7 @@ export default async function handler(req, res) {
                 <li><strong>Temporary Password:</strong> ${password}</li>
               </ul>
               <p>Please log in at <a href="https://counselinghomework.com">counselinghomework.com</a> and change your password in Account Settings.</p>
+              <p><strong>Reminders:</strong> You'll get email and text (SMS) reminders when you have homework due. If you'd rather not receive notices, you can turn off email and/or text reminders anytime in <strong>Account Settings</strong>.</p>
               <p>If you have any questions, please contact your counselor.</p>
               <p>Grace and peace,<br>GCC Counseling Team</p>
             </div>
