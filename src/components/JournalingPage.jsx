@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { db } from '../config/firebase';
 import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, Timestamp } from 'firebase/firestore';
 import RichTextEditor from './RichTextEditor';
+import { dayBucket } from '../utils/homeworkHelpers';
 
 export default function JournalingPage({
   userProfile,
@@ -210,10 +211,13 @@ export default function JournalingPage({
     // gated on basePath + not read-only so accountability partners don't trigger it.
     if (linkedHw && basePath && !isReadOnly) {
       const completions = linkedHw.completions || [];
-      const todayStr = now.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
+      // Use the 3am-rollover bucket (matches the dashboard's isCompletedToday / week math).
+      // Raw calendar date would count a 12–3am entry as "today" and wrongly block the real
+      // next-morning entry, even though the display credits the late entry to the prior day.
+      const todayBucketMs = dayBucket(now).getTime();
       const alreadyDoneToday = completions.some(c => {
         const cDate = c.toDate ? c.toDate() : new Date(c);
-        return cDate.toLocaleDateString('en-US', { timeZone: 'America/Chicago' }) === todayStr;
+        return dayBucket(cDate).getTime() === todayBucketMs;
       });
 
       if (!alreadyDoneToday) {
