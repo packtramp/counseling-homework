@@ -1422,51 +1422,19 @@ export default function UnifiedDashboard() {
     if (!request) return;
 
     try {
-      if (action === 'accept' || action === 'accept_private') {
-        const { requesterUid, requesterName, requesterEmail, requesterDataPath } = request;
-        const now = new Date().toISOString();
-        const myName = myData?.name || userProfile?.name || 'User';
-        const myBasePath = getMyBasePath();
-
-        // Direction 1: Requester shares with me (always — I can see their data)
-        await updateDoc(doc(db, 'users', requesterUid), {
-          accountabilityPartners: arrayUnion({
-            uid: user.uid, name: myName, email: user.email, addedAt: now
-          }),
-          accountabilityPartnerUids: arrayUnion(user.uid)
-        });
-        await updateDoc(doc(db, 'users', user.uid), {
-          watchingUsers: arrayUnion({
-            uid: requesterUid, name: requesterName, email: requesterEmail,
-            dataPath: requesterDataPath || `counselors/${requesterUid}/counselees/${requesterUid}`,
-            addedAt: now
-          })
-        });
-
-        // Direction 2: I share with requester (only for mutual accept)
-        if (action === 'accept') {
-          await updateDoc(doc(db, 'users', user.uid), {
-            accountabilityPartners: arrayUnion({
-              uid: requesterUid, name: requesterName, email: requesterEmail, addedAt: now
-            }),
-            accountabilityPartnerUids: arrayUnion(requesterUid)
-          });
-          await updateDoc(doc(db, 'users', requesterUid), {
-            watchingUsers: arrayUnion({
-              uid: user.uid, name: myName, email: user.email,
-              dataPath: myBasePath, addedAt: now
-            })
-          });
-        }
-      }
-
-      // Update request status
-      const statusMap = { accept: 'accepted', accept_private: 'accepted_private', decline: 'rejected' };
-      await updateDoc(doc(db, 'partnerRequests', requestId), {
-        status: statusMap[action] || action,
-        respondedAt: serverTimestamp()
+      // SECURITY: all partner-linking writes happen server-side (Admin SDK) after the server
+      // verifies we are this request's target. Clients no longer cross-write partner arrays.
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/partner-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+        body: JSON.stringify({ requestId, action: action === 'decline' ? 'reject' : action })
       });
-
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to process response');
+      }
+      // Firestore listeners pick up the status + array changes the server just wrote.
       setRespondingTo(null);
     } catch (err) {
       console.error('Error responding to partner request:', err);

@@ -93,46 +93,11 @@ export default function Login() {
           body: JSON.stringify({ email, name: name.trim(), uid })
         }).catch((err) => console.error('Notify-signup error:', err));
 
-        // Check for pending accountability partner invites — convert to partnerRequest
-        // so the new user sees an invite tile on their dashboard (no auto-linking)
-        try {
-          const emailKey = email.toLowerCase().replace(/[.]/g, '_');
-          const inviteDoc = await getDoc(doc(db, 'pendingInvites', emailKey));
-
-          if (inviteDoc.exists()) {
-            const invite = inviteDoc.data();
-            const inviterUid = invite.inviterUid;
-            const inviterName = invite.inviterName;
-
-            // Get inviter's info
-            const inviterDoc = await getDoc(doc(db, 'users', inviterUid));
-            const inviterData = inviterDoc.exists() ? inviterDoc.data() : { name: inviterName, email: '' };
-
-            let inviterDataPath = `counselors/${inviterUid}/counselees/${inviterUid}`;
-            if (inviterData.counselorId && inviterData.counseleeDocId) {
-              inviterDataPath = `counselors/${inviterData.counselorId}/counselees/${inviterData.counseleeDocId}`;
-            }
-
-            // Create a partnerRequest so it appears as an invite tile on the dashboard
-            await addDoc(collection(db, 'partnerRequests'), {
-              requesterUid: inviterUid,
-              requesterName: inviterData.name || inviterName,
-              requesterEmail: inviterData.email || '',
-              requesterDataPath: inviterDataPath,
-              targetUid: uid,
-              targetName: name.trim(),
-              targetEmail: email.toLowerCase(),
-              status: 'pending',
-              createdAt: serverTimestamp()
-            });
-
-            // Delete the pending invite (it's now a partnerRequest)
-            await deleteDoc(doc(db, 'pendingInvites', emailKey));
-          }
-        } catch (inviteErr) {
-          // Silent fail - don't block signup if invite conversion fails
-          console.log('Could not process pending invite:', inviteErr.message);
-        }
+        // Pending accountability-partner invite → partnerRequest conversion now happens
+        // SERVER-SIDE in /api/notify-signup (called just above). The client can no longer
+        // create a request whose requesterUid isn't its own caller (firestore.rules M-9),
+        // so doing it here would silently fail. The dashboard's live listener will show the
+        // invite tile once the server creates the request.
       } else {
         const userCredential = await login(email, password);
         // Update lastLogin timestamp

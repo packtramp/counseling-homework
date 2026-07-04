@@ -46,7 +46,99 @@ function htmlResponse(res, title, message, isSuccess) {
   `);
 }
 
+// Authenticated in-app response (POST). SECURITY: replaces the old client-side cross-user
+// writes to accountabilityPartnerUids (C-1). Validates the caller is the request's TARGET,
+// then does all array writes with the Admin SDK. Supports accept / accept_private / reject.
+async function handleAuthenticatedResponse(req, res) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+  if (!admin.apps.length) return res.status(500).json({ error: 'Server not configured' });
+  let callerUid;
+  try {
+    callerUid = (await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1])).uid;
+  } catch (e) { return res.status(401).json({ error: 'Invalid token' }); }
+
+  const { requestId, action } = req.body || {};
+  if (!requestId || !['accept', 'accept_private', 'reject'].includes(action)) {
+    return res.status(400).json({ error: 'Missing requestId or invalid action' });
+  }
+
+  const db = admin.firestore();
+  const now = new Date().toISOString();
+  const reqRef = db.collection('partnerRequests').doc(requestId);
+  const reqSnap = await reqRef.get();
+  if (!reqSnap.exists) return res.status(404).json({ error: 'Request not found' });
+  const request = reqSnap.data();
+
+  // AUTHORIZATION: only the request's TARGET may respond.
+  if (request.targetUid !== callerUid) return res.status(403).json({ error: 'Not authorized' });
+  if (request.status !== 'pending') return res.status(409).json({ error: 'Already processed', status: request.status });
+
+  if (action === 'reject') {
+    await reqRef.update({ status: 'rejected', respondedAt: admin.firestore.FieldValue.serverTimestamp() });
+    return res.status(200).json({ success: true, status: 'rejected' });
+  }
+
+  const { requesterUid, requesterName, requesterEmail, requesterDataPath, targetUid, targetName, targetEmail } = request;
+  const targetProfile = (await db.collection('users').doc(targetUid).get()).data() || {};
+  const requesterProfile = (await db.collection('users').doc(requesterUid).get()).data() || {};
+  const targetDataPath = (targetProfile.counselorId && targetProfile.counseleeDocId)
+    ? `counselors/${targetProfile.counselorId}/counselees/${targetProfile.counseleeDocId}`
+    : `counselors/${targetUid}/counselees/${targetUid}`;
+  const reqDataPath = requesterDataPath || `counselors/${requesterUid}/counselees/${requesterUid}`;
+
+  // Block counselor↔counselee AP links unless graduated
+  const reqIsCounseleeOfTarget = requesterProfile.counselorId === targetUid;
+  const targetIsCounseleeOfReq = targetProfile.counselorId === requesterUid;
+  if (reqIsCounseleeOfTarget || targetIsCounseleeOfReq) {
+    let graduated = false;
+    try {
+      if (reqIsCounseleeOfTarget && requesterProfile.counseleeDocId) {
+        const c = await db.doc(`counselors/${targetUid}/counselees/${requesterProfile.counseleeDocId}`).get();
+        graduated = c.exists && c.data().graduated === true;
+      } else if (targetIsCounseleeOfReq && targetProfile.counseleeDocId) {
+        const c = await db.doc(`counselors/${requesterUid}/counselees/${targetProfile.counseleeDocId}`).get();
+        graduated = c.exists && c.data().graduated === true;
+      }
+    } catch (e) { /* ignore */ }
+    if (!graduated) {
+      await reqRef.update({ status: 'blocked_counselor_relationship', respondedAt: admin.firestore.FieldValue.serverTimestamp() });
+      return res.status(409).json({ error: 'Counselor-counselee relationship already includes full access' });
+    }
+  }
+
+  const arrayUnion = admin.firestore.FieldValue.arrayUnion;
+  // Direction 1 (always): requester shares with target.
+  await db.collection('users').doc(requesterUid).update({
+    accountabilityPartners: arrayUnion({ uid: targetUid, name: targetName || targetEmail, email: targetEmail, addedAt: now }),
+    accountabilityPartnerUids: arrayUnion(targetUid),
+  });
+  await db.collection('users').doc(targetUid).update({
+    watchingUsers: arrayUnion({ uid: requesterUid, name: requesterName, email: requesterEmail, dataPath: reqDataPath, addedAt: now }),
+  });
+  // Direction 2 (mutual accept only): target shares with requester.
+  if (action === 'accept') {
+    await db.collection('users').doc(targetUid).update({
+      accountabilityPartners: arrayUnion({ uid: requesterUid, name: requesterName, email: requesterEmail, addedAt: now }),
+      accountabilityPartnerUids: arrayUnion(requesterUid),
+    });
+    await db.collection('users').doc(requesterUid).update({
+      watchingUsers: arrayUnion({ uid: targetUid, name: targetName || targetEmail, email: targetEmail, dataPath: targetDataPath, addedAt: now }),
+    });
+  }
+  await reqRef.update({
+    status: action === 'accept' ? 'accepted' : 'accepted_private',
+    respondedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return res.status(200).json({ success: true, status: action === 'accept' ? 'accepted' : 'accepted_private' });
+}
+
 export default async function handler(req, res) {
+  // In-app authenticated response (JSON). The GET path below is the email magic-link (HTML).
+  if (req.method === 'POST') {
+    try { return await handleAuthenticatedResponse(req, res); }
+    catch (e) { console.error('authenticated partner-response error:', e); return res.status(500).json({ error: 'Failed to process response' }); }
+  }
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

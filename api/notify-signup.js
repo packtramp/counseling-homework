@@ -52,10 +52,12 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   let callerUid;
+  let callerEmail;
   try {
     const token = authHeader.split('Bearer ')[1];
     const decoded = await admin.auth().verifyIdToken(token);
     callerUid = decoded.uid;
+    callerEmail = (decoded.email || '').toLowerCase();
   } catch (authErr) {
     return res.status(401).json({ error: 'Invalid token' });
   }
@@ -186,13 +188,56 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing email or name' });
   }
 
+  // B1 / M-9: convert a pending accountability-partner invite into a partnerRequest
+  // SERVER-SIDE. The client can no longer do this (M-9 blocks creating a request whose
+  // requesterUid isn't the caller). Admin SDK bypasses rules. Keyed on the VERIFIED
+  // email from the token (callerEmail) — never the client-supplied `email` — so a caller
+  // cannot hijack someone else's invite by passing a different address. targetUid is the
+  // verified callerUid, never the client-supplied uid.
+  try {
+    if (callerEmail) {
+      const db2 = admin.firestore();
+      const emailKey = callerEmail.replace(/[.]/g, '_');
+      const inviteRef = db2.collection('pendingInvites').doc(emailKey);
+      const inviteSnap = await inviteRef.get();
+      if (inviteSnap.exists) {
+        const invite = inviteSnap.data();
+        const inviterUid = invite.inviterUid;
+        if (inviterUid) {
+          const inviterSnap = await db2.collection('users').doc(inviterUid).get();
+          const inviterData = inviterSnap.exists ? inviterSnap.data() : { name: invite.inviterName, email: '' };
+          let inviterDataPath = `counselors/${inviterUid}/counselees/${inviterUid}`;
+          if (inviterData.counselorId && inviterData.counseleeDocId) {
+            inviterDataPath = `counselors/${inviterData.counselorId}/counselees/${inviterData.counseleeDocId}`;
+          }
+          await db2.collection('partnerRequests').add({
+            requesterUid: inviterUid,
+            requesterName: inviterData.name || invite.inviterName || '',
+            requesterEmail: inviterData.email || '',
+            requesterDataPath: inviterDataPath,
+            targetUid: callerUid,
+            targetName: (name || '').trim(),
+            targetEmail: callerEmail,
+            status: 'pending',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          await inviteRef.delete();
+        }
+      }
+    }
+  } catch (inviteErr) {
+    console.error('Invite conversion error:', inviteErr.message);
+  }
+
   try {
     // Send verification code to the new user via Resend
     try {
-      const verifyCode = await generateVerificationCode(uid, email);
+      // Use the VERIFIED uid/email from the token, never the client body, so a caller
+      // can't seed/clobber another user's verification-code doc or redirect the code.
+      const verifyCode = await generateVerificationCode(callerUid, callerEmail || email);
       await resend.emails.send({
         from: 'GCC Counseling <noreply@counselinghomework.com>',
-        to: email,
+        to: callerEmail || email,
         subject: 'Your verification code - Counseling Homework',
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">

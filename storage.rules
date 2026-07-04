@@ -21,12 +21,16 @@ service firebase.storage {
     }
 
     // Feedback screenshots: feedback/{uid}/{fileName}
-    // Authenticated users can upload to their own folder, anyone can read (for GitHub issue embeds)
+    // SECURITY: was `allow read: if true` (public to the whole internet) — bug-report
+    // screenshots routinely capture the counselee's own journal screen. Now owner-only.
+    // NOTE: existing images already handed out Firebase *download-token* URLs (in GitHub
+    // issues) that bypass these rules — those must be PURGED separately (delete the files
+    // or revoke tokens), and the feedback→GitHub pipeline moved to short-lived signed URLs.
     match /feedback/{userId}/{fileName} {
       allow write: if request.auth != null && request.auth.uid == userId
                    && request.resource.size < 5 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
-      allow read: if true;
+      allow read: if request.auth != null && request.auth.uid == userId;
     }
 
     // Default: deny all other access
