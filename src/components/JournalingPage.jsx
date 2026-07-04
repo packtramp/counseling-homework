@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db } from '../config/firebase';
-import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, Timestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, Timestamp } from 'firebase/firestore';
 import RichTextEditor from './RichTextEditor';
 import { dayBucket } from '../utils/homeworkHelpers';
 
@@ -375,6 +375,42 @@ export default function JournalingPage({
         await updateDoc(doc(db, `${basePath}/journals`, journalId), {
           linkedHomeworkId: null
         });
+      }
+
+      // Count Update/Submit as the day's completion when the user actually WROTE something
+      // (content grew, or it's a brand-new journal with content) — so hitting Update ticks the
+      // homework, not just the separate "Add Entry" button. Content-grew guard means a
+      // settings-only edit won't falsely complete. Once per day, 3am-bucket dedup.
+      if (!isReadOnly && linkedHomeworkId && formData.timesPerWeek > 0) {
+        const origLen = (editingJournal?.content || '').trim().length;
+        const newLen = (formData.content || '').trim().length;
+        const journaled = newLen > 0 && (!editingJournal?.id || newLen > origLen);
+        if (journaled) {
+          try {
+            // Fresh read so an "Add Entry" click moments earlier can't double-tick today
+            const hwRef = doc(db, `${basePath}/homework`, linkedHomeworkId);
+            const hwSnap = await getDoc(hwRef);
+            const existing = (hwSnap.exists() ? hwSnap.data().completions : []) || [];
+            const todayMs = dayBucket(new Date()).getTime();
+            const alreadyDoneToday = existing.some(c => {
+              const cd = c.toDate ? c.toDate() : new Date(c);
+              return dayBucket(cd).getTime() === todayMs;
+            });
+            if (!alreadyDoneToday) {
+              await updateDoc(hwRef, {
+                completions: arrayUnion(Timestamp.now())
+              });
+              await addDoc(collection(db, `${basePath}/activityLog`), {
+                action: 'homework_completed',
+                actor: role === 'counselor' ? 'counselor' : 'counselee',
+                actorUid: userProfile?.uid || '',
+                actorName: userProfile?.name || role,
+                details: `Journaled in "${formData.title || 'Untitled'}"`,
+                timestamp: serverTimestamp()
+              });
+            }
+          } catch (e) { console.error('Failed to auto-complete journal on submit:', e); }
+        }
       }
 
       setSaveStatus('submitted');
