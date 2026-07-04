@@ -1599,6 +1599,7 @@ export default function UnifiedDashboard() {
       role: 'counselee',
       counselorId: user.uid,
       counseleeDocId: selectedCounselee.id,
+      approved: true, // counselor-invited = vetted
       createdAt: serverTimestamp(),
       onboardingStep: 0
     });

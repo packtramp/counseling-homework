@@ -108,8 +108,32 @@ function EmailVerifyGate() {
   );
 }
 
+function PendingApproval() {
+  const { logout } = useAuth();
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f7fafc', padding: '20px' }}>
+      <div style={{ maxWidth: '460px', textAlign: 'center', background: 'white', padding: '2rem', borderRadius: '12px', boxShadow: '0 4px 14px rgba(0,0,0,0.08)' }}>
+        <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>⏳</div>
+        <h2 style={{ margin: '0 0 0.75rem', color: '#2c5282' }}>Account pending approval</h2>
+        <p style={{ color: '#555', lineHeight: 1.5 }}>
+          Thanks for requesting an account! This app is run by one person and each request is
+          reviewed by hand, so access isn&apos;t automatic. You&apos;ll be able to sign in once it&apos;s
+          approved — usually within a day or two.
+        </p>
+        <p style={{ color: '#888', fontSize: '0.9rem' }}>
+          Questions? Email <a href="mailto:robdorsett@gmail.com" style={{ color: '#2c5282' }}>robdorsett@gmail.com</a>.
+        </p>
+        <button onClick={logout}
+          style={{ background: 'transparent', color: '#999', padding: '8px 20px', border: 'none', cursor: 'pointer', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+          Sign Out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth();
+  const { user, userProfile, loading } = useAuth();
 
   if (loading) {
     return <div className="loading">Loading...</div>;
@@ -121,6 +145,12 @@ function ProtectedRoute({ children }) {
 
   if (!user.emailVerified) {
     return <EmailVerifyGate />;
+  }
+
+  // Public self-signups sit here until an admin approves (approved:false). Anything else
+  // — invited counselees (approved:true) and all pre-existing users (no field) — passes.
+  if (userProfile && userProfile.approved === false) {
+    return <PendingApproval />;
   }
 
   return children;

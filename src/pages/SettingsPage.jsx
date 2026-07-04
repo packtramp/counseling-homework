@@ -988,6 +988,28 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* PRIVACY & SAFETY NOTICE */}
+        <div className="settings-section">
+          <div className="settings-section-title">Privacy &amp; Safety</div>
+          <div className="settings-group">
+            <div className="settings-row settings-row-static" style={{ display: 'block' }}>
+              <p style={{ margin: '0 0 8px', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                This app is a <strong>free tool made by one person</strong> (a hobbyist), not a
+                software company. We guard your information as best we can, but no app is ever
+                perfectly secure.
+              </p>
+              <p style={{ margin: '0 0 8px', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                <strong>Please don&apos;t enter anything you wouldn&apos;t want someone else to see.</strong>{' '}
+                Keep sensitive struggles general — the category is enough. No graphic detail or names needed.
+              </p>
+              <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.5 }}>
+                You can use a <strong>first name or nickname</strong> — you don&apos;t have to use your
+                real full name. Sharing less protects you.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* ABOUT */}
         <div className="settings-section">
           <div className="settings-section-title">About</div>

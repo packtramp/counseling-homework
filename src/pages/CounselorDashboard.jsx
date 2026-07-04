@@ -363,6 +363,7 @@ export default function CounselorDashboard() {
           role: 'counselee',
           counselorId: user.uid,
           counseleeDocId: counseleeRef.id,
+          approved: true, // counselor-invited = vetted
           createdAt: serverTimestamp(),
           onboardingStep: 0,
           emailReminders: true,

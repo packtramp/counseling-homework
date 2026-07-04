@@ -41,7 +41,38 @@ async function generateVerificationCode(uid, email) {
   return code;
 }
 
+// One-click account approval. The link in the admin's email carries a server-only random
+// token (stored in accountApprovals/{uid}, a deny-all collection). No login required — the
+// token IS the authorization. Flips users/{uid}.approved = true.
+async function handleApprove(req, res) {
+  const page = (title, body) => res.status(200).setHeader('Content-Type', 'text/html').send(
+    `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<div style="font-family:sans-serif;max-width:520px;margin:48px auto;padding:0 20px;text-align:center">` +
+    `<h2>${title}</h2><p style="color:#555">${body}</p>` +
+    `<p style="margin-top:24px"><a href="https://counselinghomework.com" style="color:#2c5282">Open the app</a></p></div>`);
+  const { uid, token } = req.query;
+  if (!uid || !token) return res.status(400).send('Missing uid or token.');
+  try {
+    const db = admin.firestore();
+    const ref = db.collection('accountApprovals').doc(String(uid));
+    const snap = await ref.get();
+    if (!snap.exists) return page('Already handled', 'This request was already approved or has expired.');
+    if (snap.data().token !== String(token)) return res.status(403).send('Invalid or expired approval link.');
+    await db.collection('users').doc(String(uid)).set(
+      { approved: true, approvedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await ref.delete();
+    return page('Approved ✓', `${snap.data().name || 'This person'} can now sign in and use the app.`);
+  } catch (e) {
+    console.error('approve error:', e.message);
+    return res.status(500).send('Something went wrong approving this account.');
+  }
+}
+
 export default async function handler(req, res) {
+  // One-click account approval from the admin's notification email (GET + server-only token).
+  if (req.method === 'GET' && req.query.action === 'approve') {
+    return handleApprove(req, res);
+  }
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -255,8 +286,24 @@ export default async function handler(req, res) {
       console.error('Verification email error:', verifyErr.message);
     }
 
-    // Notify superAdmins
+    // Notify superAdmins — this is an account REQUEST; account is PENDING until approved.
     const db = admin.firestore();
+
+    // Server-only one-click approval token (accountApprovals is deny-all to clients, so the
+    // token is not readable via the world-readable users collection).
+    let approveUrl = 'https://counselinghomework.com';
+    try {
+      const token = db.collection('_t').doc().id + db.collection('_t').doc().id;
+      await db.collection('accountApprovals').doc(callerUid).set({
+        token,
+        uid: callerUid,
+        name: name || '',
+        email: callerEmail || email,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      approveUrl = `https://counselinghomework.com/api/notify-signup?action=approve&uid=${encodeURIComponent(callerUid)}&token=${encodeURIComponent(token)}`;
+    } catch (e) { console.error('approval token error:', e.message); }
+
     const superAdminsSnapshot = await db.collection('users')
       .where('isSuperAdmin', '==', true)
       .get();
@@ -277,32 +324,22 @@ export default async function handler(req, res) {
       await resend.emails.send({
         from: 'GCC Counseling <noreply@counselinghomework.com>',
         to: superAdminEmails,
-        subject: `New Signup: ${name}`,
+        replyTo: callerEmail || email,
+        subject: `Account REQUEST: ${name}`,
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>New User Signup</h2>
-            <p>A new user has created an account on GCC Counseling Homework.</p>
+            <h2>New account request</h2>
+            <p>Someone requested an account on GCC Counseling Homework.
+               <strong>They cannot access anything until you approve.</strong></p>
             <table style="border-collapse: collapse; margin: 1rem 0;">
-              <tr>
-                <td style="padding: 0.5rem 1rem 0.5rem 0; font-weight: bold;">Name:</td>
-                <td style="padding: 0.5rem 0;">${name}</td>
-              </tr>
-              <tr>
-                <td style="padding: 0.5rem 1rem 0.5rem 0; font-weight: bold;">Email:</td>
-                <td style="padding: 0.5rem 0;">${email}</td>
-              </tr>
-              <tr>
-                <td style="padding: 0.5rem 1rem 0.5rem 0; font-weight: bold;">Time:</td>
-                <td style="padding: 0.5rem 0;">${timestamp}</td>
-              </tr>
-              ${uid ? `<tr>
-                <td style="padding: 0.5rem 1rem 0.5rem 0; font-weight: bold;">UID:</td>
-                <td style="padding: 0.5rem 0; font-family: monospace; font-size: 0.85rem;">${uid}</td>
-              </tr>` : ''}
+              <tr><td style="padding:0.5rem 1rem 0.5rem 0;font-weight:bold;">Name:</td><td style="padding:0.5rem 0;">${name}</td></tr>
+              <tr><td style="padding:0.5rem 1rem 0.5rem 0;font-weight:bold;">Email:</td><td style="padding:0.5rem 0;">${email}</td></tr>
+              <tr><td style="padding:0.5rem 1rem 0.5rem 0;font-weight:bold;">Time:</td><td style="padding:0.5rem 0;">${timestamp}</td></tr>
             </table>
-            <p style="margin-top: 1.5rem;">
-              <a href="https://counselinghomework.com" style="color: #3182ce;">View Admin Panel</a>
+            <p style="margin:1.5rem 0;">
+              <a href="${approveUrl}" style="background:#2c7a4b;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">&#10003; Allow this account</a>
             </p>
+            <p style="color:#666;font-size:0.9rem;">Don't recognize them? <strong>Reply to this email</strong> to reach ${email} and ask questions first — or just ignore it and they stay locked out.</p>
           </div>
         `
       });

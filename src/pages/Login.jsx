@@ -62,6 +62,9 @@ export default function Login() {
           name: name.trim(),
           isCounselor: false,
           isSuperAdmin: false,
+          // Public self-signups start PENDING — an admin vets & approves before access.
+          // (Counselor-invited counselees are provisioned approved:true elsewhere.)
+          approved: false,
           createdAt: serverTimestamp(),
           lastLogin: serverTimestamp(),
           tosAcceptedAt: serverTimestamp(),
@@ -133,7 +136,7 @@ export default function Login() {
         <form onSubmit={handleSubmit}>
           {isSignup && (
             <div className="form-group">
-              <label htmlFor="name">Full Name</label>
+              <label htmlFor="name">Your Name</label>
               <input
                 type="text"
                 id="name"
@@ -141,8 +144,11 @@ export default function Login() {
                 onChange={(e) => setName(e.target.value)}
                 required
                 autoComplete="name"
-                placeholder="Your full name"
+                placeholder="First name or nickname is fine"
               />
+              <p style={{ fontSize: '0.8rem', color: '#718096', margin: '4px 0 0' }}>
+                A first name or nickname is fine — you don&apos;t need your full name.
+              </p>
             </div>
           )}
           <div className="form-group">
@@ -203,14 +209,19 @@ export default function Login() {
             </p>
           )}
           <button type="submit" disabled={loading}>
-            {loading ? (isSignup ? 'Creating account...' : 'Signing in...') : (isSignup ? 'Create Account' : 'Sign In')}
+            {loading ? (isSignup ? 'Submitting request...' : 'Signing in...') : (isSignup ? 'Request an Account' : 'Sign In')}
           </button>
+          {isSignup && (
+            <p style={{ fontSize: '0.8rem', color: '#718096', margin: '8px 0 0', textAlign: 'center' }}>
+              Accounts are reviewed by hand — you&apos;ll be able to sign in once approved.
+            </p>
+          )}
         </form>
         <p className="toggle-auth">
           {isSignup ? (
             <>Already have an account? <button type="button" onClick={() => setIsSignup(false)}>Sign In</button></>
           ) : (
-            <>New here? <button type="button" onClick={() => setIsSignup(true)}>Create Account</button></>
+            <>New here? <button type="button" onClick={() => setIsSignup(true)}>Request an Account</button></>
           )}
         </p>
       </div>

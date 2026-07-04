@@ -31,6 +31,8 @@ export function AuthProvider({ children }) {
               role: 'counselee',
               counselorId: linkData.counselorId,
               counseleeDocId: linkData.counseleeDocId,
+              // Invited by a counselor = already vetted → auto-approved (no pending gate).
+              approved: true,
               createdAt: new Date(),
               onboardingStep: 0
             };
