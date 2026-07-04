@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import { zonedParts, zonedTodayStr, safeTz } from './_lib/tz.js';
 
 // Initialize Firebase Admin if not already done
 if (!admin.apps.length) {
@@ -39,6 +40,8 @@ const toChicagoMidnight = (d) => {
   return new Date(s);
 };
 const chicagoDaysBetween = (from, to) => Math.round((to - from) / (24 * 60 * 60 * 1000));
+// tz-parameterized midnight — byte-identical to toChicagoMidnight when tz === 'America/Chicago'.
+const toTzMidnight = (d, tz) => new Date(d.toLocaleDateString('en-US', { timeZone: tz }));
 
 /**
  * Send Reminders API
@@ -493,16 +496,14 @@ export default async function handler(req, res) {
     return res.status(200).json({ audit });
   }
 
-  // Get current time in America/Chicago (CST/CDT)
+  // Capture the instant ONCE (A-7). Each user's LOCAL hour/day/date are projected from
+  // their own timezone inside the loop below. `currentTime` here is a Central reference
+  // for the log + response only.
   const now = new Date();
-  const chicagoTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
-  const currentHour = chicagoTime.getHours().toString().padStart(2, '0');
-  const currentTime = currentHour + ':' + chicagoTime.getMinutes().toString().padStart(2, '0');
-  const todayStr = chicagoTime.getFullYear() + '-' + (chicagoTime.getMonth() + 1).toString().padStart(2, '0') + '-' + chicagoTime.getDate().toString().padStart(2, '0');
-  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const currentDay = dayNames[chicagoTime.getDay()];
+  const centralZ = zonedParts(now, 'America/Chicago');
+  const currentTime = String(centralZ.hour).padStart(2, '0') + ':' + String(centralZ.minute).padStart(2, '0');
 
-  console.log(`Reminder check at ${chicagoTime.toISOString()} (Chicago), day=${currentDay}, time=${currentTime}, hour=${currentHour}`);
+  console.log(`Reminder check at ${now.toISOString()} — Central ${currentTime}`);
 
   try {
     // === PERSONAL REMINDERS: Send to ALL users (email AND/OR SMS opt-ins) ===
@@ -519,6 +520,16 @@ export default async function handler(req, res) {
     for (const userDoc of allUsersSnap.docs) {
       const userData = userDoc.data();
       const userId = userDoc.id;
+
+      // Project the captured `now` into THIS user's timezone. safeTz() falls back to
+      // 'America/Chicago' for a missing/invalid zone, so current Central users are
+      // byte-identical AND one bad tz string can never throw and abort the run (A-1).
+      const tz = safeTz(userData.timezone);
+      const z = zonedParts(now, tz);
+      const currentHour = String(z.hour).padStart(2, '0');
+      const currentHHMM = currentHour + ':' + String(z.minute).padStart(2, '0');
+      const todayStr = zonedTodayStr(now, tz);
+      const currentDay = z.weekday;
 
       // Skip users on vacation
       if (userData.vacationStart && userData.vacationEnd) {
@@ -562,7 +573,6 @@ export default async function handler(req, res) {
         const snappedH = m >= 45 ? (h + 1) % 24 : h;
         return snappedH.toString().padStart(2, '0') + ':' + snappedM.toString().padStart(2, '0');
       };
-      const currentHHMM = currentHour + ':' + now.toLocaleString('en-US', { minute: '2-digit', timeZone: 'America/Chicago' }).padStart(2, '0');
       const currentSlot = snapTo30(currentHHMM);
       let matchedSlot = null;
       if (schedule && schedule[currentDay]) {
@@ -589,12 +599,10 @@ export default async function handler(req, res) {
       // Get all active homework
       const homeworkSnap = await db.collection(`${basePath}/homework`).get();
 
-        // Chicago timezone helpers
-        const toChicagoDate = (d) => {
-          const s = d.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
-          return new Date(s);
-        };
-        const todayChicago = toChicagoDate(new Date());
+        // Homework week math in THIS user's timezone. toLocal() is byte-identical to the
+        // old toChicagoDate/toChicagoMidnight when tz === 'America/Chicago' (Central unchanged).
+        const toLocal = (d) => toTzMidnight(d, tz);
+        const todayChicago = toLocal(now);
         const msPerDay = 1000 * 60 * 60 * 24;
         const msPerWeek = 7 * msPerDay;
 
@@ -616,7 +624,7 @@ export default async function handler(req, res) {
           const weeklyTarget = hw.weeklyTarget || 7;
           const dailyCap = hw.dailyCap || 999;  // Default to no cap
           const rawAssigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
-          const assignedDate = toChicagoMidnight(rawAssigned);
+          const assignedDate = toLocal(rawAssigned);
           const completions = hw.completions || [];
 
           // Midnight-normalized periods (matches client-side homeworkHelpers.js)
@@ -633,7 +641,7 @@ export default async function handler(req, res) {
           const dailyCounts = {};
           for (const c of completions) {
             const cDate = c.date?.toDate ? c.date.toDate() : (c.toDate ? c.toDate() : new Date(c));
-            const cChicago = toChicagoMidnight(cDate);
+            const cChicago = toLocal(cDate);
             if (cChicago >= periodStart && cChicago <= todayChicago) {
               const dayKey = cChicago.toDateString();
               dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
@@ -685,12 +693,12 @@ export default async function handler(req, res) {
             dailyCap,
             weeklyCompleted,
             tasksRemaining,
-            assigned: toChicagoDate(assignedDate).toLocaleDateString('en-CA'),
+            assigned: toLocal(assignedDate).toLocaleDateString('en-CA'),
             weeksSinceAssigned,
             daysLeftIncludingToday,
             maxPerDay,
-            periodStart: toChicagoDate(periodStart).toLocaleDateString('en-CA'),
-            periodEnd: toChicagoDate(periodEnd).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }),
+            periodStart: toLocal(periodStart).toLocaleDateString('en-CA'),
+            periodEnd: toLocal(periodEnd).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }),
             isBehind,
             isFirstWeek,
             isComplete: weeklyCompleted >= effectiveTarget,

@@ -364,6 +364,7 @@ export default function CounselorDashboard() {
           counselorId: user.uid,
           counseleeDocId: counseleeRef.id,
           approved: true, // counselor-invited = vetted
+          timezone: 'America/Chicago', // default; counselee sets their own in Settings
           createdAt: serverTimestamp(),
           onboardingStep: 0,
           emailReminders: true,

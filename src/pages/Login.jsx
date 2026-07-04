@@ -55,6 +55,8 @@ export default function Login() {
         ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].forEach(day => {
           defaultSchedule[day] = { slot1: '09:00', slot2: '15:00', slot3: '20:00' };
         });
+        // Auto-capture the signer-upper's device timezone (Central fallback).
+        const deviceTz = (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'America/Chicago';
 
         // Create user profile in Firestore
         await setDoc(doc(db, 'users', uid), {
@@ -65,6 +67,7 @@ export default function Login() {
           // Public self-signups start PENDING — an admin vets & approves before access.
           // (Counselor-invited counselees are provisioned approved:true elsewhere.)
           approved: false,
+          timezone: deviceTz,
           createdAt: serverTimestamp(),
           lastLogin: serverTimestamp(),
           tosAcceptedAt: serverTimestamp(),
@@ -81,6 +84,7 @@ export default function Login() {
           uid: uid,
           status: 'active',
           currentStreak: 0,
+          timezone: deviceTz,
           createdAt: serverTimestamp(),
           isSelf: true,
           emailReminders: true,

@@ -11,6 +11,20 @@ import { downloadCounseleeData } from '../utils/generatePDF';
 import { APP_VERSION } from '../config/version';
 import SuperAdminPanel from '../components/SuperAdminPanel';
 
+// Curated IANA timezone list (common US + major international). Not the full 400+.
+const TZ_OPTIONS = [
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix',
+  'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu',
+  'America/Toronto', 'America/Mexico_City', 'America/Sao_Paulo',
+  'Europe/London', 'Europe/Dublin', 'Europe/Paris', 'Europe/Berlin',
+  'Europe/Madrid', 'Europe/Rome', 'Europe/Athens', 'Europe/Moscow',
+  'Africa/Lagos', 'Africa/Nairobi', 'Africa/Johannesburg', 'Africa/Cairo',
+  'Asia/Jerusalem', 'Asia/Dubai', 'Asia/Kolkata', 'Asia/Kathmandu',
+  'Asia/Bangkok', 'Asia/Singapore', 'Asia/Manila', 'Asia/Hong_Kong',
+  'Asia/Shanghai', 'Asia/Seoul', 'Asia/Tokyo',
+  'Australia/Perth', 'Australia/Sydney', 'Pacific/Auckland',
+];
+
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { user, userProfile, isCounselor, isSuperAdmin, logout } = useAuth();
@@ -46,6 +60,8 @@ export default function SettingsPage() {
     sunday: { slot1: '09:00', slot2: '', slot3: '' }
   };
   const [reminderSchedule, setReminderSchedule] = useState(defaultSchedule);
+  const deviceZone = (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'America/Chicago';
+  const [timezone, setTimezone] = useState('America/Chicago');
 
   // Session template
   const [sessionTemplate, setSessionTemplate] = useState('');
@@ -92,6 +108,7 @@ export default function SettingsPage() {
         setSmsReminders(data.smsReminders ?? false);
         setEmailReminders(data.emailReminders ?? true);
         setReminderSchedule(data.reminderSchedule || defaultSchedule);
+        setTimezone(data.timezone || deviceZone);
         setSessionTemplate(data.sessionTemplate || '');
       }
       setLoading(false);
@@ -125,6 +142,8 @@ export default function SettingsPage() {
     const dataUpdates = {};
     if (updates.name) dataUpdates.name = updates.name;
     if (updates.photoUrl) dataUpdates.counseleePhotoUrl = updates.photoUrl;
+    // Denormalize timezone onto the counselee doc too (the Phase-2 nightly seal reads it there).
+    if (updates.timezone) dataUpdates.timezone = updates.timezone;
 
     if (Object.keys(dataUpdates).length > 0) {
       const dataRef = doc(db, getMyBasePath());
@@ -217,7 +236,7 @@ export default function SettingsPage() {
     if (smsReminders && !phone.trim()) { setError('Phone number required for SMS reminders'); return; }
     setSaving(true);
     try {
-      await handleUpdateMyProfile({ phone, reminderSchedule, smsReminders, emailReminders });
+      await handleUpdateMyProfile({ phone, reminderSchedule, smsReminders, emailReminders, timezone });
       setSuccess('Reminder preferences saved!');
     } catch (err) { setError(err.message); }
     finally { setSaving(false); }
@@ -382,6 +401,20 @@ export default function SettingsPage() {
               <label>Phone Number</label>
               <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 123-4567" required={smsReminders} />
               <small className="form-hint">{smsReminders ? 'Standard message rates may apply.' : 'Required only if SMS reminders are enabled.'}</small>
+            </div>
+            <div className="form-group">
+              <label>Your Timezone</label>
+              <select value={timezone} onChange={e => setTimezone(e.target.value)}>
+                {(TZ_OPTIONS.includes(timezone) ? TZ_OPTIONS : [timezone, ...TZ_OPTIONS]).map(z => (
+                  <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>
+                ))}
+              </select>
+              <small className="form-hint" style={{ display: 'block' }}>
+                Reminder times below are in your timezone. Detected on this device: {deviceZone.replace(/_/g, ' ')}
+                {timezone !== deviceZone && (
+                  <> — <button type="button" onClick={() => setTimezone(deviceZone)} style={{ background: 'none', border: 'none', color: '#2c5282', cursor: 'pointer', padding: 0, textDecoration: 'underline', font: 'inherit' }}>use this</button></>
+                )}
+              </small>
             </div>
             <div className="form-group reminder-schedule">
               <label>Weekly Schedule</label>

@@ -33,6 +33,8 @@ export function AuthProvider({ children }) {
               counseleeDocId: linkData.counseleeDocId,
               // Invited by a counselor = already vetted → auto-approved (no pending gate).
               approved: true,
+              // Auto-capture the counselee's device timezone on first login (Central fallback).
+              timezone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'America/Chicago',
               createdAt: new Date(),
               onboardingStep: 0
             };
