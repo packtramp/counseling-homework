@@ -1,5 +1,8 @@
 import admin from 'firebase-admin';
-import { zonedParts, zonedTodayStr, safeTz } from './_lib/tz.js';
+import { zonedParts, zonedTodayStr, safeTz, DAY_ROLLOVER_HOUR } from './_lib/tz.js';
+
+// Allow extra time — the 3am-local tick also runs the nightly seal pass.
+export const config = { maxDuration: 60 };
 
 // Initialize Firebase Admin if not already done
 if (!admin.apps.length) {
@@ -823,6 +826,32 @@ export default async function handler(req, res) {
 
     console.log(`Reminders sent: ${smsCount} SMS, ${emailCount} emails, ${errors.length} errors`);
 
+    // ═══ PER-USER NIGHTLY SEAL (migrated from midnight-reset.js PHASE 2) ═══
+    // Iterate counselors→counselees (NOT the users loop — real counselees may have no user
+    // doc). Fire the seal once per counselee at the first tick at/after THEIR local 3am.
+    // The guard reads only the (denormalized) counselee tz — zero extra lookups per tick.
+    let sealedCount = 0, sealErrors = 0, sealChecked = 0;
+    try {
+      const sealCounselorRefs = await db.collection('counselors').listDocuments();
+      for (const cRef of sealCounselorRefs) {
+        const ceesSnap = await db.collection(`counselors/${cRef.id}/counselees`).get();
+        for (const ceeDoc of ceesSnap.docs) {
+          sealChecked++;
+          try {
+            const cee = ceeDoc.data();
+            const ceeTz = safeTz(cee.timezone);
+            const zc = zonedParts(now, ceeTz);
+            const ceeToday = zonedTodayStr(now, ceeTz);
+            // Guard: only at/after the counselee's local 3am, once per local day.
+            if (zc.hour < DAY_ROLLOVER_HOUR || cee.lastSealedDate === ceeToday) continue;
+            await sealCounseleeDay(cRef.id, ceeDoc.id, ceeToday, now);
+            sealedCount++;
+          } catch (e) { sealErrors++; console.error(`Seal error ${cRef.id}/${ceeDoc.id}:`, e.message); }
+        }
+      }
+    } catch (e) { console.error('Seal pass error:', e.message); }
+    if (sealedCount > 0 || sealErrors > 0) console.log(`Seal pass: ${sealedCount}/${sealChecked} sealed, ${sealErrors} errors`);
+
 
     return res.status(200).json({
       success: true,
@@ -998,6 +1027,87 @@ const AP_INACTIVE_DAYS = 21;
  * 21 days, or added within the grace window). Reports on yesterday + current-week
  * progress. Returns { html, count } or null when there are no active partners.
  */
+// Per-counselee nightly seal — migrated verbatim from midnight-reset.js PHASE 2.
+// SAME behind/streak formula (timezone-agnostic raw-ms week math) → byte-identical for
+// Central users. Idempotent via a transaction on lastSealedDate. Called once per counselee
+// per LOCAL day (guarded by the caller: local hour >= 3 && lastSealedDate !== today).
+async function sealCounseleeDay(counselorId, counseleeId, ceeToday, now) {
+  const db = admin.firestore();
+  const basePath = `counselors/${counselorId}/counselees/${counseleeId}`;
+
+  // Vacation skip — don't reset a streak while the counselee is on vacation. Still stamp
+  // lastSealedDate so we don't re-process this counselee on every 30-min tick all day.
+  let onVacation = false;
+  try {
+    const usersSnap = await db.collection('users')
+      .where('counselorId', '==', counselorId).where('counseleeDocId', '==', counseleeId).limit(1).get();
+    if (!usersSnap.empty) {
+      const ud = usersSnap.docs[0].data();
+      if (ud.vacationStart && ud.vacationEnd) {
+        const vs = ud.vacationStart.toDate ? ud.vacationStart.toDate() : new Date(ud.vacationStart);
+        const ve = ud.vacationEnd.toDate ? ud.vacationEnd.toDate() : new Date(ud.vacationEnd);
+        if (now >= vs && now <= ve) onVacation = true;
+      }
+    }
+  } catch (e) { /* proceed as not-on-vacation */ }
+  if (onVacation) {
+    await db.doc(basePath).set({ lastSealedDate: ceeToday }, { merge: true });
+    return;
+  }
+
+  // Behind count — homework read OUTSIDE the transaction (F-3c). Formula unchanged.
+  const homeworkSnap = await db.collection(`${basePath}/homework`).get();
+  let behindCount = 0;
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const msPerWeek = 7 * msPerDay;
+  for (const hwDoc of homeworkSnap.docs) {
+    const hw = hwDoc.data();
+    if (hw.status === 'cancelled' || hw.status === 'expired' || hw.status === 'completed') continue;
+    const completions = hw.completions || [];
+    const weeklyTarget = hw.weeklyTarget || 7;
+    const assignedDate = hw.assignedDate?.toDate ? hw.assignedDate.toDate()
+      : (hw.assignedDate ? new Date(hw.assignedDate) : new Date());
+    const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
+    let currentWeekCompletions = 0;
+    completions.forEach((c) => {
+      const cDate = c.toDate ? c.toDate() : new Date(c);
+      if (Math.floor((cDate - assignedDate) / msPerWeek) === weeksSinceAssigned) currentWeekCompletions++;
+    });
+    const weekStartMs = assignedDate.getTime() + (weeksSinceAssigned * msPerWeek);
+    const dayOfWeek = Math.floor((now.getTime() - weekStartMs) / msPerDay);
+    const daysRemaining = 7 - dayOfWeek;
+    if ((currentWeekCompletions + daysRemaining) < weeklyTarget) behindCount++;
+  }
+  const hasActiveHomework = homeworkSnap.docs.some((d) => d.data().status === 'active');
+
+  // Idempotent write: re-check lastSealedDate inside the transaction; compute the new streak
+  // from the FRESH stored value so overlapping ticks can't double-increment.
+  let didLog = false, prevStreak = 0, streakReset = false;
+  await db.runTransaction(async (tx) => {
+    const ceeRef = db.doc(basePath);
+    const snap = await tx.get(ceeRef);
+    const data = snap.data() || {};
+    if (data.lastSealedDate === ceeToday) return; // already sealed this local day
+    prevStreak = data.currentStreak || 0;
+    const newStreak = !hasActiveHomework ? prevStreak : (behindCount > 0 ? 0 : prevStreak + 1);
+    streakReset = behindCount > 0 && prevStreak > 0;
+    tx.update(ceeRef, {
+      behindCount,
+      currentStreak: newStreak,
+      lastSealedDate: ceeToday,
+      lastBehindCheck: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    didLog = behindCount > 0 && hasActiveHomework;
+  });
+
+  if (didLog) {
+    await db.collection(`${basePath}/activityLog`).add({
+      type: 'red_day', behindCount, streakReset, previousStreak: prevStreak,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+}
+
 async function buildPartnerSection(apData, now) {
   if (!apData.watchingUsers || !Array.isArray(apData.watchingUsers) || apData.watchingUsers.length === 0) return null;
 

@@ -247,131 +247,21 @@ export default async function handler(req, res) {
     }
     console.log(`Expired homework: ${expiredCancelled} cancelled, ${expiresAtBackfilled} backfilled, ${nonRecurringRetired} non-recurring retired`);
 
-    // ═══ PHASE 2: BEHIND COUNT + STREAK UPDATES ═══
-    // Counselor docs are phantom parents — must use listDocuments().
-    const counselorRefs = await db.collection('counselors').listDocuments();
-    let counseleesProcessed = 0;
-    let behindUpdates = 0;
-    let redDaysLogged = 0;
+    // ═══ PHASE 2 (behind count + streak + red-day) MOVED to the per-user seal ═══
+    // The nightly seal now runs per-counselee at each user's LOCAL 3am inside the 30-min
+    // reminder cron (send-reminders.js → sealCounseleeDay). This daily cron keeps only the
+    // timezone-agnostic work above: vacation auto-complete (PHASE 1) + expiry (PHASE 1.5).
 
-    for (const counselorRef of counselorRefs) {
-      const counselorId = counselorRef.id;
-
-      // Get all counselees for this counselor
-      const counseleesSnap = await db.collection(`counselors/${counselorId}/counselees`).get();
-
-      for (const counseleeDoc of counseleesSnap.docs) {
-        counseleesProcessed++;
-        const counseleeId = counseleeDoc.id;
-
-        // Skip counselees on vacation
-        try {
-          const usersSnap = await db.collection('users')
-            .where('counselorId', '==', counselorId)
-            .where('counseleeDocId', '==', counseleeId)
-            .limit(1)
-            .get();
-          if (!usersSnap.empty) {
-            const userData = usersSnap.docs[0].data();
-            if (userData.vacationStart && userData.vacationEnd) {
-              const now = new Date();
-              const vacStart = userData.vacationStart.toDate ? userData.vacationStart.toDate() : new Date(userData.vacationStart);
-              const vacEnd = userData.vacationEnd.toDate ? userData.vacationEnd.toDate() : new Date(userData.vacationEnd);
-              if (now >= vacStart && now <= vacEnd) {
-                continue;
-              }
-            }
-          }
-        } catch (e) { /* vacation check failed, proceed normally */ }
-
-        // Get homework for this counselee
-        const homeworkSnap = await db.collection(`counselors/${counselorId}/counselees/${counseleeId}/homework`).get();
-
-        // Calculate behind count
-        let behindCount = 0;
-        const now = new Date();
-
-        for (const hwDoc of homeworkSnap.docs) {
-          const hw = hwDoc.data();
-          if (hw.status === 'cancelled' || hw.status === 'expired' || hw.status === 'completed') continue;
-
-          const completions = hw.completions || [];
-          const weeklyTarget = hw.weeklyTarget || 7;
-
-          let assignedDate;
-          if (hw.assignedDate?.toDate) {
-            assignedDate = hw.assignedDate.toDate();
-          } else if (hw.assignedDate) {
-            assignedDate = new Date(hw.assignedDate);
-          } else {
-            assignedDate = new Date();
-          }
-
-          const msPerDay = 24 * 60 * 60 * 1000;
-          const msPerWeek = 7 * msPerDay;
-          const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
-
-          // Count completions this week
-          let currentWeekCompletions = 0;
-          completions.forEach(c => {
-            const cDate = c.toDate ? c.toDate() : new Date(c);
-            const weekNum = Math.floor((cDate - assignedDate) / msPerWeek);
-            if (weekNum === weeksSinceAssigned) {
-              currentWeekCompletions++;
-            }
-          });
-
-          // Calculate days remaining
-          const weekStartMs = assignedDate.getTime() + (weeksSinceAssigned * msPerWeek);
-          const dayOfWeek = Math.floor((now.getTime() - weekStartMs) / msPerDay);
-          const daysRemaining = 7 - dayOfWeek;
-
-          // Check if behind
-          if ((currentWeekCompletions + daysRemaining) < weeklyTarget) {
-            behindCount++;
-          }
-        }
-
-        // Update streak: not behind = +1, behind = reset to 0
-        const currentData = counseleeDoc.data();
-        const currentStreak = currentData.currentStreak || 0;
-        const hasActiveHomework = homeworkSnap.docs.some(d => d.data().status === 'active');
-        const newStreak = !hasActiveHomework ? currentStreak : (behindCount > 0 ? 0 : currentStreak + 1);
-
-        // Update counselee document with behind count and streak
-        if (currentData.behindCount !== behindCount || currentData.currentStreak !== newStreak) {
-          await db.doc(`counselors/${counselorId}/counselees/${counseleeId}`).update({
-            behindCount: behindCount,
-            currentStreak: newStreak,
-            lastBehindCheck: admin.firestore.FieldValue.serverTimestamp()
-          });
-          behindUpdates++;
-        }
-
-        // Log red days to activity history for historical tracking
-        if (behindCount > 0 && hasActiveHomework) {
-          await db.collection(`counselors/${counselorId}/counselees/${counseleeId}/activityLog`).add({
-            type: 'red_day',
-            behindCount: behindCount,
-            streakReset: currentStreak > 0,
-            previousStreak: currentStreak,
-            timestamp: admin.firestore.FieldValue.serverTimestamp()
-          });
-          redDaysLogged++;
-        }
-      }
-    }
-
-    console.log(`Midnight cron complete: ${counseleesProcessed} counselees processed, ${behindUpdates} behind counts updated, ${redDaysLogged} red days logged`);
+    console.log(`Midnight cron complete: expiry ${expiredCancelled} cancelled / ${nonRecurringRetired} retired; vacation ${vacationUsersProcessed} users`);
 
     return res.status(200).json({
       success: true,
       timestamp: new Date().toISOString(),
-      counseleesProcessed,
-      behindUpdates,
-      redDaysLogged,
+      vacationUsersProcessed,
+      vacationItemsAutoCompleted,
       expiredCancelled,
-      expiresAtBackfilled
+      expiresAtBackfilled,
+      nonRecurringRetired
     });
   } catch (error) {
     console.error('Midnight cron error:', error);
