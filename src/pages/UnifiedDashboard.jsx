@@ -2256,6 +2256,25 @@ export default function UnifiedDashboard() {
           <div className="session-columns">
             <div className="session-homework-column">
               <HomeworkTile homework={filteredHomework} role="counselor" showSessionFilter={true} sessionFilterOnly={sessionFilterOnly} onSessionFilterChange={setSessionFilterOnly} onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} onOpenJournal={handleOpenCounseleeJournalFromHomework} onComplete={handleCounseleeCompleteHomework} completingId={completingId} />
+              {/* Session history — flip to any past session's notes, then jump back */}
+              <div className="session-history-panel">
+                <div className="session-history-header">Sessions ({counseleeSessions.length})</div>
+                <ul className="session-history-list">
+                  {counseleeSessions.map(s => (
+                    <li
+                      key={s.id}
+                      className={`session-history-item ${s.id === selectedCounseleeSession?.id ? 'active' : ''}`}
+                      onClick={() => { setSelectedCounseleeSession(s); setCounseleeSessionNotes(s.notes || ''); }}
+                    >
+                      <span className="session-date">
+                        {formatDate(s.date)}
+                        {s.isJoint && <span className="joint-badge" title="Joint session">Joint</span>}
+                      </span>
+                      <span className="session-meta">{counseleeHomework.filter(h => h.sessionId === s.id).length} hw</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
             <div className="session-notes-column">
               <Tile title="Session Notes">
@@ -2764,10 +2783,10 @@ export default function UnifiedDashboard() {
                       className={`accountability-tile status-${status}`}
                       onClick={() => setSelectedWatchedUser(person)}
                     >
+                      <div className="accountability-tile-name">{person.name}</div>
                       <div className="accountability-tile-top">
                         <ProfilePhoto photoUrl={photoUrl} size="small" />
                         <div className="accountability-tile-info">
-                          <div className="accountability-tile-name">{person.name}</div>
                           <div className="accountability-tile-email">{person.email}</div>
                           <div className="accountability-tile-meta">
                             <span className="accountability-tile-status">
@@ -2851,10 +2870,10 @@ export default function UnifiedDashboard() {
                         className={`accountability-tile status-${tileStatus}`}
                         onClick={() => setSelectedCounselee(counselee)}
                       >
+                        <div className="accountability-tile-name">{counselee.name}</div>
                         <div className="accountability-tile-top">
                           <ProfilePhoto photoUrl={counselee.photoUrl || counselee.counseleePhotoUrl} size="small" />
                           <div className="accountability-tile-info">
-                            <div className="accountability-tile-name">{counselee.name}</div>
                             <div className="accountability-tile-email">{counselee.email || 'No email'}</div>
                             <div className="accountability-tile-meta">
                               <span className="accountability-tile-status">
@@ -2893,6 +2912,8 @@ export default function UnifiedDashboard() {
               isOpen={showAccountabilityPartnersModal}
               onClose={() => setShowAccountabilityPartnersModal(false)}
               myPartners={myAccountabilityPartners}
+              watchingUsers={myWatchingUsers}
+              isPersonInactive={(uid) => { const p = myWatchingUsers.find(w => w.uid === uid); return p ? isAPInactive(p, watchingUsersStatus[uid]) : false; }}
               onAddPartner={handleAddAccountabilityPartner}
               onRemovePartner={handleRemoveAccountabilityPartner}
               currentUserUid={user?.uid}

@@ -19,6 +19,8 @@ export default function AccountabilityPartnersModal({
   isOpen,
   onClose,
   myPartners = [],
+  watchingUsers = [],
+  isPersonInactive,
   onAddPartner,
   onRemovePartner,
   currentUserUid,
@@ -241,37 +243,68 @@ export default function AccountabilityPartnersModal({
           {error && <div className="error">{error}</div>}
           {success && <div className="success">{success}</div>}
 
-          {activeTab === 'view' && (
-            <div className="ap-lists">
-              {/* People who can view my data (I added them) */}
-              <div className="ap-section">
-                <h4>Can View Your Data ({myPartners.length})</h4>
-                <p className="ap-section-desc">These people can see your homework, journals, and progress.</p>
-                {myPartners.length === 0 ? (
-                  <p className="ap-empty">No one yet. Add a partner to share your progress.</p>
+          {activeTab === 'view' && (() => {
+            // Union of both directions: people who can see YOU (myPartners) and people
+            // YOU can see (watchingUsers).
+            const byUid = new Map();
+            myPartners.forEach(p => byUid.set(p.uid, { uid: p.uid, name: p.name, email: p.email, seesYou: true }));
+            watchingUsers.forEach(w => {
+              const e = byUid.get(w.uid) || { uid: w.uid, name: w.name, email: w.email };
+              e.youSeeThem = true;
+              if (!e.name) e.name = w.name;
+              if (!e.email) e.email = w.email;
+              byUid.set(w.uid, e);
+            });
+            const rows = Array.from(byUid.values()).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            return (
+              <div className="ap-matrix">
+                <p className="ap-section-desc">
+                  Who can see your data, and whose data you can see. The <strong>✕</strong> stops
+                  someone from seeing your data. (Only they can stop you seeing theirs.)
+                </p>
+                {rows.length === 0 ? (
+                  <p className="ap-empty">No accountability partners yet.</p>
                 ) : (
-                  <ul className="ap-list">
-                    {myPartners.map(partner => (
-                      <li key={partner.uid} className="ap-list-item">
-                        <ProfilePhoto size="small" />
-                        <div className="ap-list-info">
-                          <span className="ap-list-name">{partner.name}</span>
-                          <span className="ap-list-email">{partner.email}</span>
-                        </div>
-                        <button
-                          className="ap-remove-btn"
-                          onClick={() => handleRemove(partner.uid, partner.name)}
-                          title="Remove partner"
-                        >
-                          &times;
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <table className="ap-matrix-table">
+                    <thead>
+                      <tr>
+                        <th>Person</th>
+                        <th title="They can see your homework, journals, and progress">Sees<br/>you</th>
+                        <th title="You can see their progress">You see<br/>them</th>
+                        <th>Status</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(r => {
+                        const inactive = r.youSeeThem && isPersonInactive ? isPersonInactive(r.uid) : null;
+                        return (
+                          <tr key={r.uid}>
+                            <td className="ap-matrix-person">
+                              <span className="ap-matrix-name">{r.name}</span>
+                              <span className="ap-matrix-email">{r.email}</span>
+                            </td>
+                            <td className="ap-matrix-check">{r.seesYou ? <span className="ap-yes">✓</span> : <span className="ap-no">—</span>}</td>
+                            <td className="ap-matrix-check">{r.youSeeThem ? <span className="ap-yes">✓</span> : <span className="ap-no">—</span>}</td>
+                            <td className="ap-matrix-status">
+                              {r.youSeeThem
+                                ? <span className={`ap-dot ${inactive ? 'inactive' : 'active'}`} title={inactive ? 'Inactive 21+ days' : 'Active'}>●</span>
+                                : <span className="ap-no" title="You don't watch them, so their activity is unknown">—</span>}
+                            </td>
+                            <td className="ap-matrix-action">
+                              {r.seesYou && (
+                                <button className="ap-remove-btn" onClick={() => handleRemove(r.uid, r.name)} title="Stop them seeing your data">&times;</button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {activeTab === 'add' && (
             <div className="ap-add-section">

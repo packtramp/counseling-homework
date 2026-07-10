@@ -1,6 +1,8 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
 import { useEffect } from 'react';
 
 const MenuBar = ({ editor }) => {
@@ -48,6 +50,14 @@ const MenuBar = ({ editor }) => {
       >
         H
       </button>
+      <button
+        type="button"
+        onClick={() => editor.chain().focus().toggleTaskList().run()}
+        className={editor.isActive('taskList') ? 'active' : ''}
+        title="Checklist"
+      >
+        &#9745;
+      </button>
     </div>
   );
 };
@@ -56,6 +66,8 @@ export default function RichTextEditor({ content, onChange, placeholder, readOnl
   const editor = useEditor({
     extensions: [
       StarterKit,
+      TaskList,
+      TaskItem.configure({ nested: true }),
       Placeholder.configure({
         placeholder: placeholder || 'Enter text...',
       }),

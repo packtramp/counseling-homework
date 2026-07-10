@@ -1762,6 +1762,52 @@ textarea {
   min-height: 0;
 }
 
+/* Session history list in the session-notes view (left column, under Homework) */
+.session-history-panel {
+  margin-top: 1rem;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-gray-200, #e2e8f0);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.session-history-header {
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--color-gray-200, #e2e8f0);
+  color: var(--color-text-secondary);
+}
+.session-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.session-history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-gray-100, #f0f0f0);
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+.session-history-item:hover { background: var(--color-gray-100, #f7fafc); }
+.session-history-item.active {
+  background: #ebf4ff;
+  border-left: 3px solid #2b6cb0;
+  font-weight: 600;
+}
+.session-history-item .session-meta {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
 .session-notes-column .rich-text-editor {
   flex: 1;
   display: flex;
@@ -1845,6 +1891,38 @@ textarea {
 
 .rich-text-editor .ProseMirror p {
   margin: 0 0 0.5rem;
+}
+
+/* Checklist (Tiptap task list) — clickable checkboxes in Session Notes etc. */
+.rich-text-editor .ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.25rem 0;
+}
+.rich-text-editor .ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.rich-text-editor .ProseMirror ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+  user-select: none;
+}
+.rich-text-editor .ProseMirror ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+}
+.rich-text-editor .ProseMirror ul[data-type="taskList"] li > div > p {
+  margin: 0;
+}
+.rich-text-editor .ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+.rich-text-editor .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
 }
 
 .rich-text-editor .ProseMirror ul,
@@ -4506,9 +4584,11 @@ button.counselor-check-indicator.clickable-check:active {
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--color-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Full name on its own line above the avatar+circles row (no truncation). */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+  margin-bottom: 0.35rem;
 }
 
 .accountability-tile-email {
@@ -5192,6 +5272,38 @@ button.counselor-check-indicator.clickable-check:active {
   font-style: italic;
   margin: 0;
 }
+
+/* Two-way relationship matrix (My Partners tab) */
+.ap-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.ap-matrix-table th {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  padding: 0.4rem 0.3rem;
+  border-bottom: 2px solid var(--color-gray-200, #e2e8f0);
+  line-height: 1.1;
+}
+.ap-matrix-table th:first-child { text-align: left; }
+.ap-matrix-table td {
+  padding: 0.5rem 0.3rem;
+  border-bottom: 1px solid var(--color-gray-100, #f0f0f0);
+  text-align: center;
+  vertical-align: middle;
+}
+.ap-matrix-person { text-align: left !important; }
+.ap-matrix-name { display: block; font-weight: 600; color: var(--color-text); }
+.ap-matrix-email { display: block; font-size: 0.72rem; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.ap-matrix-check .ap-yes { color: #38a169; font-weight: 700; }
+.ap-matrix-check .ap-no, .ap-matrix-status .ap-no { color: var(--color-text-faint, #a0aec0); }
+.ap-dot { font-size: 0.7rem; }
+.ap-dot.active { color: #38a169; }
+.ap-dot.inactive { color: #e53e3e; }
+.ap-matrix-action { width: 2rem; }
 
 .ap-list {
   list-style: none;
