@@ -125,6 +125,7 @@ export default function UnifiedDashboard() {
   const [counseleeSessionNotes, setCounseleeSessionNotes] = useState('');
   const [openSessionIds, setOpenSessionIds] = useState([]); // accordion: which session tiles are expanded
   const [counseleeOverall, setCounseleeOverall] = useState(''); // this counselee's Overall Summary (counselor-only)
+  const [privateSessionNotes, setPrivateSessionNotes] = useState({}); // { sessionId: html } — counselor-only session notes
   const [dateSaveStatus, setDateSaveStatus] = useState(null);
   const [sessionFilterOnly, setSessionFilterOnly] = useState(false);
   const [showFamilyLinkModal, setShowFamilyLinkModal] = useState(false);
@@ -889,6 +890,16 @@ export default function UnifiedDashboard() {
       console.error('Listener error for counselee activity log:', error.code, error.message);
     });
 
+    // Counselor-only private notes (session notes keyed s_<sessionId>, plus overall). The
+    // counselee CANNOT read this subcollection — that's the whole point.
+    const pnUnsub = onSnapshot(collection(db, `${basePath}/private`), (snapshot) => {
+      const map = {};
+      snapshot.docs.forEach(d => { if (d.id.startsWith('s_')) map[d.id.slice(2)] = d.data().content || ''; });
+      setPrivateSessionNotes(map);
+    }, (error) => {
+      console.error('Listener error for private notes:', error.code, error.message);
+    });
+
     return () => {
       hwUnsub();
       sessUnsub();
@@ -896,6 +907,7 @@ export default function UnifiedDashboard() {
       tlUnsub();
       jnUnsub();
       alUnsub();
+      pnUnsub();
     };
   }, [user, selectedCounselee]);
 
@@ -1618,9 +1630,9 @@ export default function UnifiedDashboard() {
   const handleAddCounseleeSession = async (isJoint = false) => {
     // Use session template if available
     const templateNotes = myProfile?.sessionTemplate || '';
+    // Session doc holds only shared/counselee-visible fields — NOT the counselor's notes.
     const sessionData = {
       date: serverTimestamp(),
-      notes: templateNotes,
       homeworkAssigned: [],
       createdAt: serverTimestamp()
     };
@@ -1629,6 +1641,8 @@ export default function UnifiedDashboard() {
       collection(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`),
       sessionData
     );
+    // Counselor notes (seeded from the template) go to the private, counselor-only subdoc.
+    await setDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/private/s_${sessionRef.id}`), { content: templateNotes, updatedAt: serverTimestamp() });
 
     // If joint session, create mirror under spouse
     if (isJoint) {
@@ -1638,6 +1652,7 @@ export default function UnifiedDashboard() {
           collection(db, `counselors/${user.uid}/counselees/${spouse.id}/sessions`),
           { ...sessionData, isJoint: true, linkedSessionId: sessionRef.id, linkedCounseleeId: selectedCounselee.id }
         );
+        await setDoc(doc(db, `counselors/${user.uid}/counselees/${spouse.id}/private/s_${spouseSessionRef.id}`), { content: templateNotes, updatedAt: serverTimestamp() });
         // Update original with link back
         await updateDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, sessionRef.id), {
           isJoint: true,
@@ -1647,8 +1662,7 @@ export default function UnifiedDashboard() {
       }
     }
 
-    setSelectedCounseleeSession({ id: sessionRef.id, date: new Date(), notes: templateNotes, homeworkAssigned: [], isJoint: isJoint || false });
-    setCounseleeSessionNotes(templateNotes);
+    setSelectedCounseleeSession({ id: sessionRef.id, date: new Date(), homeworkAssigned: [], isJoint: isJoint || false });
     setOpenSessionIds((prev) => prev.includes(sessionRef.id) ? prev : [...prev, sessionRef.id]);
   };
 
@@ -1955,9 +1969,11 @@ export default function UnifiedDashboard() {
   const toggleSessionOpen = (id) => setOpenSessionIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
   const saveSessionNotesById = async (session, html) => {
-    await updateDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, session.id), { notes: html });
+    // Counselor session notes → COUNSELOR-ONLY private subdoc (not the session doc, which the
+    // counselee can read). Keyed s_<sessionId>.
+    await setDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/private/s_${session.id}`), { content: html, updatedAt: serverTimestamp() }, { merge: true });
     if (session.isJoint && session.linkedSessionId) {
-      try { await updateDoc(doc(db, `counselors/${user.uid}/counselees/${session.linkedCounseleeId}/sessions`, session.linkedSessionId), { notes: html }); } catch (e) { console.error('joint notes sync:', e); }
+      try { await setDoc(doc(db, `counselors/${user.uid}/counselees/${session.linkedCounseleeId}/private/s_${session.linkedSessionId}`), { content: html, updatedAt: serverTimestamp() }, { merge: true }); } catch (e) { console.error('joint notes sync:', e); }
     }
   };
   const changeSessionDateById = async (session, val) => {
@@ -2323,6 +2339,7 @@ export default function UnifiedDashboard() {
                     <SessionTile
                       key={s.id}
                       session={s}
+                      notesContent={privateSessionNotes[s.id] || ''}
                       isOpen={openSessionIds.includes(s.id)}
                       onToggle={() => toggleSessionOpen(s.id)}
                       hwCount={counseleeHomework.filter(h => h.sessionId === s.id).length}

@@ -24,10 +24,10 @@ function durLabel(min) {
 
 // One accordion tile for a single counseling session (counselor-only).
 export default function SessionTile({
-  session, isOpen, onToggle, hwCount, dateLabel, dateTimeValue,
+  session, notesContent, isOpen, onToggle, hwCount, dateLabel, dateTimeValue,
   onChangeDate, onChangeDuration, onDelete, onSaveNotes,
 }) {
-  const topic = firstLine(session.notes);
+  const topic = firstLine(notesContent);
   const dur = durLabel(session.duration);
 
   return (
@@ -65,7 +65,7 @@ export default function SessionTile({
             <button type="button" className="delete-session-btn" onClick={onDelete} title="Delete this session">Delete</button>
           </div>
           <RichTextEditor
-            content={session.notes || ''}
+            content={notesContent || ''}
             onChange={onSaveNotes}
             placeholder="Session notes... (the first line becomes the session topic)"
           />
