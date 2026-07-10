@@ -272,7 +272,7 @@ export default function AccountabilityPartnersModal({
                         <th title="They can see your homework, journals, and progress">Sees<br/>you</th>
                         <th title="You can see their progress">You see<br/>them</th>
                         <th>Status</th>
-                        <th></th>
+                        <th title="Remove this person's ability to see your data">Remove<br/>their view</th>
                       </tr>
                     </thead>
                     <tbody>
