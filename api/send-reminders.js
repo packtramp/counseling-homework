@@ -1,5 +1,6 @@
 import admin from 'firebase-admin';
 import { zonedParts, zonedTodayStr, safeTz, DAY_ROLLOVER_HOUR } from './_lib/tz.js';
+import { runDailyChores } from './_lib/dailyChores.js';
 
 // Allow extra time — the 3am-local tick also runs the nightly seal pass.
 export const config = { maxDuration: 60 };
@@ -851,6 +852,16 @@ export default async function handler(req, res) {
       }
     } catch (e) { console.error('Seal pass error:', e.message); }
     if (sealedCount > 0 || sealErrors > 0) console.log(`Seal pass: ${sealedCount}/${sealChecked} sealed, ${sealErrors} errors`);
+
+    // ═══ DAILY HOUSEKEEPING (retire one-time homework, expire timed items, vacation auto-complete) ═══
+    // Runs once/day at/after 3am Central. Moved OFF the Vercel daily cron (which never
+    // authenticated → never ran) onto this reliable 30-min cron. Guarded once/day internally.
+    try {
+      const chores = await runDailyChores(now);
+      if (chores.ran) console.log('Daily chores:', JSON.stringify(chores));
+    } catch (choreErr) {
+      console.error('Daily chores error:', choreErr.message);
+    }
 
 
     return res.status(200).json({

@@ -1,270 +1,46 @@
 import admin from 'firebase-admin';
+import { runDailyChores } from '../_lib/dailyChores.js';
 
 // Initialize Firebase Admin if not already done
 if (!admin.apps.length) {
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-
   if (privateKey) {
     privateKey = privateKey.replace(/\\n/g, '\n');
     privateKey = privateKey.replace(/\\\\n/g, '\n');
   }
-
   if (projectId && clientEmail && privateKey) {
     try {
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId,
-          clientEmail,
-          privateKey,
-        }),
-      });
+      admin.initializeApp({ credential: admin.credential.cert({ projectId, clientEmail, privateKey }) });
     } catch (initError) {
       console.error('Firebase Admin init error:', initError.message);
     }
   }
 }
 
-const db = admin.apps.length ? admin.firestore() : null;
-
 /**
- * Midnight cron job - runs daily at midnight (America/Chicago timezone)
+ * Daily housekeeping endpoint.
  *
- * Current functionality:
- * - Updates "behindCount" on counselee documents for denormalized display
- * - Updates "currentStreak" on counselee documents (not behind = +1, behind = reset to 0)
- * - Logs red days to activityLog for historical tracking
+ * NOTE: the actual work now lives in api/_lib/dailyChores.js and is ALSO driven by the reliable
+ * 30-minute reminder cron (send-reminders.js). This Vercel daily cron historically never
+ * authenticated (no CRON_SECRET set → 401 every night → never ran), so it is now just a
+ * redundant trigger. runDailyChores() is guarded to run once per Central day regardless of how
+ * many times / from where it's called, so this can't double-fire with the reminder cron.
  */
 export default async function handler(req, res) {
-  if (!db) {
+  if (!admin.apps.length) {
     return res.status(500).json({ error: 'Firebase not initialized' });
   }
-
-  // Verify this is a cron request from Vercel
   const authHeader = req.headers['authorization'];
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    console.log('Unauthorized cron attempt');
     return res.status(401).json({ error: 'Unauthorized' });
   }
-
-  console.log('Midnight cron running at:', new Date().toISOString());
-
   try {
-    // ═══ PHASE 1: VACATION AUTO-COMPLETE (runs before streak/behind calculations) ═══
-    // Auto-completes for YESTERDAY (the day that just ended) so completions count toward
-    // the correct homework week. Also completes for today to stay current.
-    const now = new Date();
-    const chicagoNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
-
-    // Yesterday in Chicago time
-    const yesterdayChicago = new Date(chicagoNow);
-    yesterdayChicago.setDate(yesterdayChicago.getDate() - 1);
-    const yMonth = String(yesterdayChicago.getMonth() + 1).padStart(2, '0');
-    const yDay = String(yesterdayChicago.getDate()).padStart(2, '0');
-    const yYear = yesterdayChicago.getFullYear();
-    const yesterdayDateStr = `${yYear}-${yMonth}-${yDay}`;
-    const yesterdayMidnight = new Date(yesterdayChicago);
-    yesterdayMidnight.setHours(0, 0, 0, 0);
-    // Timestamp for yesterday at 11:59 PM Chicago time
-    const yesterdayLate = new Date(yesterdayChicago);
-    yesterdayLate.setHours(23, 59, 0, 0);
-    // Convert back to UTC for Firestore timestamp
-    const yesterdayLateUtcMs = now.getTime() - (chicagoNow.getTime() - yesterdayLate.getTime());
-    const yesterdayTimestamp = admin.firestore.Timestamp.fromMillis(yesterdayLateUtcMs);
-
-    // Today in Chicago time
-    const chicagoDateStr = now.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
-    const [vMonth, vDay, vYear] = chicagoDateStr.split('/');
-    const todayDateStr = `${vYear}-${vMonth.padStart(2, '0')}-${vDay.padStart(2, '0')}`;
-    const todayMidnight = new Date(chicagoNow);
-    todayMidnight.setHours(0, 0, 0, 0);
-
-    let vacationUsersProcessed = 0;
-    let vacationItemsAutoCompleted = 0;
-
-    const allUsersSnap = await db.collection('users').get();
-    for (const userDoc of allUsersSnap.docs) {
-      const userData = userDoc.data();
-      if (!userData.vacationStart || !userData.vacationEnd) continue;
-
-      const vacStart = userData.vacationStart.toDate ? userData.vacationStart.toDate() : new Date(userData.vacationStart);
-      const vacEnd = userData.vacationEnd.toDate ? userData.vacationEnd.toDate() : new Date(userData.vacationEnd);
-      if (now < vacStart || now > vacEnd) continue;
-
-      const counselorId = userData.counselorId || userDoc.id;
-      const counseleeDocId = userData.counseleeDocId || userDoc.id;
-      const homeworkPath = `counselors/${counselorId}/counselees/${counseleeDocId}/homework`;
-      const homeworkSnap = await db.collection(homeworkPath).get();
-      const autoCompletedTitles = [];
-
-      for (const hwDoc of homeworkSnap.docs) {
-        const hw = hwDoc.data();
-        if (hw.status === 'cancelled' || hw.status === 'expired' || hw.status === 'completed') continue;
-
-        const completions = hw.completions || [];
-
-        // Check if already completed yesterday
-        let yesterdayDone = false;
-        for (const c of completions) {
-          const cDate = c.toDate ? c.toDate() : new Date(c);
-          const cChicago = new Date(cDate.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
-          cChicago.setHours(0, 0, 0, 0);
-          if (cChicago.getTime() === yesterdayMidnight.getTime()) { yesterdayDone = true; break; }
-        }
-
-        // Check if already completed today
-        let todayDone = false;
-        for (const c of completions) {
-          const cDate = c.toDate ? c.toDate() : new Date(c);
-          const cChicago = new Date(cDate.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
-          cChicago.setHours(0, 0, 0, 0);
-          if (cChicago.getTime() === todayMidnight.getTime()) { todayDone = true; break; }
-        }
-
-        const updates = {};
-        const dateStrs = [];
-
-        // Backfill yesterday if vacation was active then too
-        if (!yesterdayDone && yesterdayMidnight.getTime() >= new Date(vacStart.toLocaleString('en-US', { timeZone: 'America/Chicago' })).setHours(0,0,0,0)) {
-          updates.completions = admin.firestore.FieldValue.arrayUnion(yesterdayTimestamp);
-          dateStrs.push(yesterdayDateStr);
-        }
-
-        // Complete today
-        if (!todayDone) {
-          updates.completions = admin.firestore.FieldValue.arrayUnion(
-            ...(dateStrs.length > 0 ? [yesterdayTimestamp, admin.firestore.Timestamp.now()] : [admin.firestore.Timestamp.now()])
-          );
-          dateStrs.push(todayDateStr);
-        }
-
-        if (dateStrs.length > 0) {
-          updates.autoCompletedDates = admin.firestore.FieldValue.arrayUnion(...dateStrs);
-          await db.doc(`${homeworkPath}/${hwDoc.id}`).update(updates);
-          autoCompletedTitles.push(hw.title || hwDoc.id);
-          vacationItemsAutoCompleted += dateStrs.length;
-        }
-      }
-
-      if (autoCompletedTitles.length > 0) {
-        await db.collection(`counselors/${counselorId}/counselees/${counseleeDocId}/activityLog`).add({
-          type: 'vacation_auto_complete',
-          itemsAutoCompleted: autoCompletedTitles,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        vacationUsersProcessed++;
-      }
-    }
-
-    console.log(`Vacation auto-complete: ${vacationUsersProcessed} users, ${vacationItemsAutoCompleted} items`);
-
-    // ═══ PHASE 1.5: AUTO-CANCEL EXPIRED HOMEWORK ═══
-    // Checks expiresAt timestamp (set by ThinkList/Journal save).
-    // Also backfills expiresAt for legacy homework that has durationWeeks but no expiresAt.
-    let expiredCancelled = 0;
-    let expiresAtBackfilled = 0;
-    let nonRecurringRetired = 0;
-    // NOTE: counselor docs are phantom parents (subcollections only, no document body).
-    // Use listDocuments() — .get() on this collection returns zero documents.
-    const allCounselorRefs = await db.collection('counselors').listDocuments();
-    for (const cRef of allCounselorRefs) {
-      const ceesSnap = await db.collection(`counselors/${cRef.id}/counselees`).get();
-      for (const ceeDoc of ceesSnap.docs) {
-        const hwSnap = await db.collection(`counselors/${cRef.id}/counselees/${ceeDoc.id}/homework`)
-          .where('status', '==', 'active').get();
-        for (const hwDoc of hwSnap.docs) {
-          const hw = hwDoc.data();
-          const hwRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/homework/${hwDoc.id}`);
-
-          // Retire a NON-RECURRING plain homework once its single week has elapsed → 'completed'.
-          // Recurring items repeat forever; linked Think List / Journal items use the duration/expiry path below.
-          if (hw.recurring === false && !hw.linkedThinkListId && !hw.linkedJournalingId) {
-            const assignedNR = hw.assignedDate?.toDate ? hw.assignedDate.toDate()
-              : new Date(hw.assignedDate || hw.createdAt?.toDate?.() || now);
-            const weekEnd = new Date(assignedNR.getTime() + 7 * 24 * 60 * 60 * 1000);
-            if (weekEnd <= now) {
-              await hwRef.update({
-                status: 'completed',
-                completedAt: admin.firestore.FieldValue.serverTimestamp(),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-              });
-              nonRecurringRetired++;
-              continue;
-            }
-          }
-
-          // Backfill: has durationWeeks but no expiresAt — calculate from assignedDate
-          if (hw.durationWeeks && !hw.expiresAt) {
-            const assigned = hw.assignedDate?.toDate ? hw.assignedDate.toDate() : new Date(hw.assignedDate || hw.createdAt?.toDate() || now);
-            const expiresAt = new Date(assigned.getTime() + hw.durationWeeks * 7 * 24 * 60 * 60 * 1000);
-            await hwRef.update({ expiresAt: admin.firestore.Timestamp.fromDate(expiresAt) });
-            expiresAtBackfilled++;
-            // Check if already expired
-            if (expiresAt <= now) {
-              await hwRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-              expiredCancelled++;
-              // Also expire the linked Think List or Journal document (safe — skip if doc missing)
-              try {
-                if (hw.linkedThinkListId) {
-                  const tlRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
-                  const tlSnap = await tlRef.get();
-                  if (tlSnap.exists) await tlRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-                }
-                if (hw.linkedJournalingId) {
-                  const jnRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/journals/${hw.linkedJournalingId}`);
-                  const jnSnap = await jnRef.get();
-                  if (jnSnap.exists) await jnRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-                }
-              } catch (linkErr) { console.warn('Failed to expire linked doc:', linkErr.message); }
-              continue;
-            }
-          }
-
-          // Check expiresAt
-          if (hw.expiresAt) {
-            const expDate = hw.expiresAt.toDate ? hw.expiresAt.toDate() : new Date(hw.expiresAt);
-            if (expDate <= now) {
-              await hwRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-              expiredCancelled++;
-              // Also expire the linked Think List or Journal document (safe — skip if doc missing)
-              try {
-                if (hw.linkedThinkListId) {
-                  const tlRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/thinkLists/${hw.linkedThinkListId}`);
-                  const tlSnap = await tlRef.get();
-                  if (tlSnap.exists) await tlRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-                }
-                if (hw.linkedJournalingId) {
-                  const jnRef = db.doc(`counselors/${cRef.id}/counselees/${ceeDoc.id}/journals/${hw.linkedJournalingId}`);
-                  const jnSnap = await jnRef.get();
-                  if (jnSnap.exists) await jnRef.update({ status: 'expired', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-                }
-              } catch (linkErr) { console.warn('Failed to expire linked doc:', linkErr.message); }
-            }
-          }
-        }
-      }
-    }
-    console.log(`Expired homework: ${expiredCancelled} cancelled, ${expiresAtBackfilled} backfilled, ${nonRecurringRetired} non-recurring retired`);
-
-    // ═══ PHASE 2 (behind count + streak + red-day) MOVED to the per-user seal ═══
-    // The nightly seal now runs per-counselee at each user's LOCAL 3am inside the 30-min
-    // reminder cron (send-reminders.js → sealCounseleeDay). This daily cron keeps only the
-    // timezone-agnostic work above: vacation auto-complete (PHASE 1) + expiry (PHASE 1.5).
-
-    console.log(`Midnight cron complete: expiry ${expiredCancelled} cancelled / ${nonRecurringRetired} retired; vacation ${vacationUsersProcessed} users`);
-
-    return res.status(200).json({
-      success: true,
-      timestamp: new Date().toISOString(),
-      vacationUsersProcessed,
-      vacationItemsAutoCompleted,
-      expiredCancelled,
-      expiresAtBackfilled,
-      nonRecurringRetired
-    });
+    const result = await runDailyChores(new Date());
+    return res.status(200).json({ success: true, timestamp: new Date().toISOString(), ...result });
   } catch (error) {
-    console.error('Midnight cron error:', error);
+    console.error('Daily chores cron error:', error);
     return res.status(500).json({ error: error.message });
   }
 }
