@@ -134,6 +134,12 @@ service cloud.firestore {
         )).data.accountabilityPartnerUids;
     }
 
+    // Counselor-only private notes about a counselee (Overall Summary & Goals). NOT
+    // isTheCounselee — the counselee must never read the counselor's clinical observations.
+    match /counselors/{counselorId}/counselees/{counseleeId}/private/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == counselorId;
+    }
+
     // Homework - counselor full access, counselee read + update + create + delete
     match /counselors/{counselorId}/counselees/{counseleeId}/homework/{homeworkId} {
       allow read, write: if request.auth != null && request.auth.uid == counselorId;

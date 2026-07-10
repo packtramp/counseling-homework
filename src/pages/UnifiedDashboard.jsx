@@ -6,6 +6,8 @@ import { db, auth } from '../config/firebase';
 import { collection, query, onSnapshot, addDoc, setDoc, doc, deleteDoc, updateDoc, serverTimestamp, orderBy, getDocs, getDoc, arrayUnion, Timestamp, limit, where } from 'firebase/firestore';
 import Tile from '../components/Tile';
 import RichTextEditor from '../components/RichTextEditor';
+import SessionTile from '../components/SessionTile';
+import { DEFAULT_OVERALL_TEMPLATE } from '../config/counselingTemplates';
 import HomeworkTile from '../components/HomeworkTile';
 import HeartJournalsTile from '../components/HeartJournalsTile';
 import HeartJournalPage from '../components/HeartJournalPage';
@@ -121,6 +123,8 @@ export default function UnifiedDashboard() {
   const [counseleeActivityLog, setCounseleeActivityLog] = useState([]);
   const [selectedCounseleeSession, setSelectedCounseleeSession] = useState(null);
   const [counseleeSessionNotes, setCounseleeSessionNotes] = useState('');
+  const [openSessionIds, setOpenSessionIds] = useState([]); // accordion: which session tiles are expanded
+  const [counseleeOverall, setCounseleeOverall] = useState(''); // this counselee's Overall Summary (counselor-only)
   const [dateSaveStatus, setDateSaveStatus] = useState(null);
   const [sessionFilterOnly, setSessionFilterOnly] = useState(false);
   const [showFamilyLinkModal, setShowFamilyLinkModal] = useState(false);
@@ -1645,6 +1649,7 @@ export default function UnifiedDashboard() {
 
     setSelectedCounseleeSession({ id: sessionRef.id, date: new Date(), notes: templateNotes, homeworkAssigned: [], isJoint: isJoint || false });
     setCounseleeSessionNotes(templateNotes);
+    setOpenSessionIds((prev) => prev.includes(sessionRef.id) ? prev : [...prev, sessionRef.id]);
   };
 
   const handleDeleteCounseleeSession = async () => {
@@ -1937,6 +1942,77 @@ export default function UnifiedDashboard() {
     }
   };
 
+  // ── Session accordion + Overall Summary (counselor-only) ──
+  const sessionDateTimeValue = (session) => {
+    const d = session.date?.toDate ? session.date.toDate() : (session.date instanceof Date ? session.date : new Date(session.date || Date.now()));
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const sessionDateLabel = (session) => {
+    const d = session.date?.toDate ? session.date.toDate() : new Date(session.date || Date.now());
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  };
+  const toggleSessionOpen = (id) => setOpenSessionIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+
+  const saveSessionNotesById = async (session, html) => {
+    await updateDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, session.id), { notes: html });
+    if (session.isJoint && session.linkedSessionId) {
+      try { await updateDoc(doc(db, `counselors/${user.uid}/counselees/${session.linkedCounseleeId}/sessions`, session.linkedSessionId), { notes: html }); } catch (e) { console.error('joint notes sync:', e); }
+    }
+  };
+  const changeSessionDateById = async (session, val) => {
+    const d = new Date(val);
+    await updateDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, session.id), { date: d });
+    if (session.isJoint && session.linkedSessionId) {
+      try { await updateDoc(doc(db, `counselors/${user.uid}/counselees/${session.linkedCounseleeId}/sessions`, session.linkedSessionId), { date: d }); } catch (e) { console.error('joint date sync:', e); }
+    }
+  };
+  const changeSessionDurationById = async (session, minutes) => {
+    const duration = minutes === '' ? null : Number(minutes);
+    await updateDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, session.id), { duration });
+    if (session.isJoint && session.linkedSessionId) {
+      try { await updateDoc(doc(db, `counselors/${user.uid}/counselees/${session.linkedCounseleeId}/sessions`, session.linkedSessionId), { duration }); } catch (e) { console.error('joint duration sync:', e); }
+    }
+  };
+  const deleteSessionById = async (session) => {
+    const isJoint = session.isJoint && session.linkedSessionId;
+    if (!window.confirm(isJoint ? 'Delete this joint session? It will be removed from both spouses. This cannot be undone.' : 'Delete this session? This cannot be undone.')) return;
+    if (isJoint) { try { await deleteDoc(doc(db, `counselors/${user.uid}/counselees/${session.linkedCounseleeId}/sessions`, session.linkedSessionId)); } catch (e) { console.error('joint delete:', e); } }
+    await deleteDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/sessions`, session.id));
+    setOpenSessionIds((prev) => prev.filter((id) => id !== session.id));
+  };
+  const saveCounseleeOverall = async (html) => {
+    setCounseleeOverall(html);
+    if (selectedCounselee) {
+      // Stored in a COUNSELOR-ONLY subdoc (private/overall) — the counselee cannot read it,
+      // unlike a field on their own counselee record. Holds sensitive clinical observations.
+      try { await setDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/private/overall`), { content: html, updatedAt: serverTimestamp() }, { merge: true }); } catch (e) { console.error('overall save:', e); }
+    }
+  };
+
+  // Seed the Overall Summary when a counselee is opened: their saved (private) summary →
+  // else the counselor's template → else the built-in default. Re-loads on counselee change.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!selectedCounselee) return;
+      let content = null;
+      try {
+        const snap = await getDoc(doc(db, `counselors/${user.uid}/counselees/${selectedCounselee.id}/private/overall`));
+        if (snap.exists()) content = snap.data().content;
+      } catch (e) { console.error('overall load:', e); }
+      if (!cancelled) setCounseleeOverall(content || myProfile?.overallTemplate || DEFAULT_OVERALL_TEMPLATE);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCounselee?.id]);
+  // Auto-open the session tile you entered on.
+  useEffect(() => {
+    if (selectedCounseleeSession?.id) {
+      setOpenSessionIds((prev) => prev.includes(selectedCounseleeSession.id) ? prev : [...prev, selectedCounseleeSession.id]);
+    }
+  }, [selectedCounseleeSession?.id]);
+
   // Session navigation for counselee detail
   const currentCounseleeSessionIndex = selectedCounseleeSession
     ? counseleeSessions.findIndex(s => s.id === selectedCounseleeSession.id)
@@ -2217,69 +2293,49 @@ export default function UnifiedDashboard() {
       <div className="dashboard">
         <header>
           <button className="back-btn" onClick={() => setSelectedCounseleeSession(null)}>&larr; Back</button>
-          <div className="session-nav">
-            <button className="nav-arrow" onClick={() => navigateCounseleeSession('newer')} disabled={!hasNewerCounseleeSession} title="Newer session">&larr;</button>
-            <span className="session-nav-label">
-              {selectedCounselee.name}
-              {selectedCounseleeSession.isJoint && (() => {
-                const spouse = counselees.find(c => c.id === selectedCounseleeSession.linkedCounseleeId);
-                return <span className="joint-session-label"> &amp; {spouse?.name || 'Spouse'}</span>;
-              })()}
-            </span>
-            <button className="nav-arrow" onClick={() => navigateCounseleeSession('older')} disabled={!hasOlderCounseleeSession} title="Older session">&rarr;</button>
-          </div>
+          <h1>{selectedCounselee.name}</h1>
         </header>
         <main>
-          <div className="session-date-row">
-            <label>Session:</label>
-            <input type="datetime-local" value={getSessionDateTimeValue()} onChange={(e) => handleDateChange(e.target.value)} className="session-date-input" />
-            <select
-              className="session-duration-select"
-              value={selectedCounseleeSession.duration || ''}
-              onChange={(e) => handleDurationChange(e.target.value)}
-            >
-              <option value="">—</option>
-              <option value="30">30m</option>
-              <option value="45">45m</option>
-              <option value="60">1h</option>
-              <option value="75">1h15</option>
-              <option value="90">1h30</option>
-              <option value="105">1h45</option>
-              <option value="120">2h</option>
-              <option value="150">2h30</option>
-              <option value="180">3h</option>
-            </select>
-            {dateSaveStatus && <span className={`save-status ${dateSaveStatus}`}>{dateSaveStatus === 'saving' ? 'Saving...' : '✓ Saved'}</span>}
-            {selectedCounseleeSession.isJoint && <span className="joint-badge">Joint</span>}
-            <button className="delete-session-btn" onClick={handleDeleteCounseleeSession} title="Delete this session">Delete Session</button>
-          </div>
           <div className="session-columns">
             <div className="session-homework-column">
               <HomeworkTile homework={filteredHomework} role="counselor" showSessionFilter={true} sessionFilterOnly={sessionFilterOnly} onSessionFilterChange={setSessionFilterOnly} onEdit={handleCounseleeEditHomework} onCancel={handleCounseleeCancelHomework} onReactivate={handleCounseleeReactivateHomework} onUncheck={handleCounseleeUncheckHomework} onDelete={handleCounseleeDeleteHomework} onAdd={handleCounseleeAddHomework} onOpenThinkList={handleOpenCounseleeThinkListFromHomework} onOpenJournal={handleOpenCounseleeJournalFromHomework} onComplete={handleCounseleeCompleteHomework} completingId={completingId} />
-              {/* Session history — flip to any past session's notes, then jump back */}
-              <div className="session-history-panel">
-                <div className="session-history-header">Sessions ({counseleeSessions.length})</div>
-                <ul className="session-history-list">
-                  {counseleeSessions.map(s => (
-                    <li
-                      key={s.id}
-                      className={`session-history-item ${s.id === selectedCounseleeSession?.id ? 'active' : ''}`}
-                      onClick={() => { setSelectedCounseleeSession(s); setCounseleeSessionNotes(s.notes || ''); }}
-                    >
-                      <span className="session-date">
-                        {formatDate(s.date)}
-                        {s.isJoint && <span className="joint-badge" title="Joint session">Joint</span>}
-                      </span>
-                      <span className="session-meta">{counseleeHomework.filter(h => h.sessionId === s.id).length} hw</span>
-                    </li>
-                  ))}
-                </ul>
+              {/* Overall Summary & Goals — living, per-counselee, counselor-only */}
+              <div className="overall-summary-panel">
+                <div className="overall-summary-header">Overall Summary &amp; Goals</div>
+                <RichTextEditor content={counseleeOverall} onChange={saveCounseleeOverall} placeholder="Big-picture summary for this counselee (only you see this)..." />
               </div>
             </div>
             <div className="session-notes-column">
-              <Tile title="Session Notes">
-                <RichTextEditor content={counseleeSessionNotes} onChange={handleCounseleeNotesChange} placeholder="Enter session notes here..." />
-              </Tile>
+              <div className="session-accordion-bar">
+                <span className="session-accordion-title">Sessions ({counseleeSessions.length})</span>
+                <span className="session-add-group">
+                  {getLinkedSpouse(selectedCounselee.id) && (
+                    <button className="add-btn add-btn-secondary" onClick={() => handleAddCounseleeSession(true)}>+ Joint</button>
+                  )}
+                  <button className="add-btn" onClick={() => handleAddCounseleeSession(false)}>+ Session</button>
+                </span>
+              </div>
+              <div className="session-accordion">
+                {counseleeSessions.length === 0 ? (
+                  <p className="empty-list">No sessions yet. Click &ldquo;+ Session&rdquo; to start.</p>
+                ) : (
+                  [...counseleeSessions].reverse().map(s => (
+                    <SessionTile
+                      key={s.id}
+                      session={s}
+                      isOpen={openSessionIds.includes(s.id)}
+                      onToggle={() => toggleSessionOpen(s.id)}
+                      hwCount={counseleeHomework.filter(h => h.sessionId === s.id).length}
+                      dateLabel={sessionDateLabel(s)}
+                      dateTimeValue={sessionDateTimeValue(s)}
+                      onChangeDate={(val) => changeSessionDateById(s, val)}
+                      onChangeDuration={(val) => changeSessionDurationById(s, val)}
+                      onDelete={() => deleteSessionById(s)}
+                      onSaveNotes={(html) => saveSessionNotesById(s, html)}
+                    />
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </main>

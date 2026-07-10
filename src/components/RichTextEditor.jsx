@@ -3,6 +3,10 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableCell } from '@tiptap/extension-table-cell';
+import { TableHeader } from '@tiptap/extension-table-header';
 import { useEffect } from 'react';
 
 const MenuBar = ({ editor }) => {
@@ -58,6 +62,20 @@ const MenuBar = ({ editor }) => {
       >
         &#9745;
       </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (editor.isActive('table')) {
+            editor.chain().focus().deleteTable().run();
+          } else {
+            editor.chain().focus().insertTable({ rows: 3, cols: 2, withHeaderRow: true }).run();
+          }
+        }}
+        className={editor.isActive('table') ? 'active' : ''}
+        title={editor.isActive('table') ? 'Delete table' : 'Insert table'}
+      >
+        &#9638;
+      </button>
     </div>
   );
 };
@@ -68,6 +86,10 @@ export default function RichTextEditor({ content, onChange, placeholder, readOnl
       StarterKit,
       TaskList,
       TaskItem.configure({ nested: true }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
       Placeholder.configure({
         placeholder: placeholder || 'Enter text...',
       }),

@@ -10,6 +10,7 @@ import RichTextEditor from '../components/RichTextEditor';
 import { downloadCounseleeData } from '../utils/generatePDF';
 import { APP_VERSION } from '../config/version';
 import SuperAdminPanel from '../components/SuperAdminPanel';
+import { DEFAULT_OVERALL_TEMPLATE } from '../config/counselingTemplates';
 
 // Curated IANA timezone list (common US + major international). Not the full 400+.
 const TZ_OPTIONS = [
@@ -65,6 +66,7 @@ export default function SettingsPage() {
 
   // Session template
   const [sessionTemplate, setSessionTemplate] = useState('');
+  const [overallTemplate, setOverallTemplate] = useState('');
 
   // PDF download
   const [downloading, setDownloading] = useState(false);
@@ -110,6 +112,7 @@ export default function SettingsPage() {
         setReminderSchedule(data.reminderSchedule || defaultSchedule);
         setTimezone(data.timezone || deviceZone);
         setSessionTemplate(data.sessionTemplate || '');
+        setOverallTemplate(data.overallTemplate || DEFAULT_OVERALL_TEMPLATE);
       }
       setLoading(false);
     };
@@ -246,7 +249,7 @@ export default function SettingsPage() {
     e.preventDefault();
     setError(null); setSuccess(null); setSaving(true);
     try {
-      await handleUpdateMyProfile({ sessionTemplate });
+      await handleUpdateMyProfile({ sessionTemplate, overallTemplate });
       setSuccess('Session template saved!');
     } catch (err) { setError(err.message); }
     finally { setSaving(false); }
@@ -468,8 +471,20 @@ export default function SettingsPage() {
                 placeholder="Enter your session template here... e.g., Opening Questions, Progress Review, New Assignments, Prayer Requests..."
               />
             </div>
+            <div className="form-group" style={{ marginTop: '1.5rem' }}>
+              <label>Overall Summary Template</label>
+              <small className="form-hint" style={{ marginBottom: '8px', display: 'block' }}>
+                The big-picture summary you keep per counselee (background, idols, hope log, topics to cover, put off/put on).
+                Each counselee starts from a copy of this — only you ever see it. Use the ☑ checklist and ▦ table buttons.
+              </small>
+              <RichTextEditor
+                content={overallTemplate}
+                onChange={setOverallTemplate}
+                placeholder="Your overall summary structure..."
+              />
+            </div>
             <button type="submit" className="save-btn" disabled={saving}>
-              {saving ? 'Saving...' : 'Save Template'}
+              {saving ? 'Saving...' : 'Save Templates'}
             </button>
           </form>
         </div>

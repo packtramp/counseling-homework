@@ -1808,6 +1808,68 @@ textarea {
   white-space: nowrap;
 }
 
+/* Overall Summary panel (counselor session view, left column under Homework) */
+.overall-summary-panel {
+  margin-top: 1rem;
+  border: 1px solid var(--color-gray-200, #e2e8f0);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 320px;
+}
+.overall-summary-header {
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--color-gray-100, #f0f4f8);
+  border-bottom: 1px solid var(--color-gray-200, #e2e8f0);
+  color: var(--color-text);
+}
+.overall-summary-panel .rich-text-editor { flex: 1; border: none; }
+
+/* Session accordion (counselor session view, right column) */
+.session-accordion-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.session-accordion-title { font-weight: 600; font-size: 0.95rem; color: var(--color-text); }
+.session-accordion { display: flex; flex-direction: column; gap: 0.5rem; }
+.session-tile {
+  border: 1px solid var(--color-gray-200, #e2e8f0);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-surface, #fff);
+}
+.session-tile.open { border-color: #2b6cb0; }
+.session-tile-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--color-text);
+}
+.session-tile.open .session-tile-head { background: #ebf4ff; }
+.session-tile-chevron { color: var(--color-text-secondary); flex-shrink: 0; }
+.session-tile-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.session-tile-date { font-weight: 600; font-size: 0.85rem; }
+.session-tile-topic { font-size: 0.78rem; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-tile-badges { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+.session-tile-dur { font-size: 0.72rem; color: var(--color-text-secondary); background: var(--color-gray-100, #f0f4f8); padding: 1px 6px; border-radius: 10px; }
+.session-tile-hw { font-size: 0.72rem; color: var(--color-text-secondary); white-space: nowrap; }
+.session-tile-body { padding: 0.5rem 0.75rem 0.75rem; border-top: 1px solid var(--color-gray-100, #f0f0f0); }
+.session-tile-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.session-tile-controls label { font-size: 0.8rem; color: var(--color-text-secondary); }
+
 .session-notes-column .rich-text-editor {
   flex: 1;
   display: flex;
@@ -1924,6 +1986,27 @@ textarea {
   color: var(--color-text-secondary);
   text-decoration: line-through;
 }
+
+/* Tables in the editor (Put Off/Put On, Principle tracking, etc.) */
+.rich-text-editor .ProseMirror table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  width: 100%;
+  table-layout: fixed;
+}
+.rich-text-editor .ProseMirror td,
+.rich-text-editor .ProseMirror th {
+  border: 1px solid var(--color-gray-300, #cbd5e0);
+  padding: 0.4rem 0.6rem;
+  vertical-align: top;
+  min-width: 3em;
+}
+.rich-text-editor .ProseMirror th {
+  background: var(--color-gray-100, #f0f4f8);
+  font-weight: 600;
+  text-align: left;
+}
+.rich-text-editor .ProseMirror .selectedCell { background: #ebf4ff; }
 
 .rich-text-editor .ProseMirror ul,
 .rich-text-editor .ProseMirror ol {
