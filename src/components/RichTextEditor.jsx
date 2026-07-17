@@ -103,9 +103,12 @@ export default function RichTextEditor({ content, onChange, placeholder, readOnl
     },
   });
 
-  // Update editor content when prop changes (e.g., navigating between sessions)
+  // Update editor content when the prop changes (e.g., switching sessions) — but ONLY when the
+  // user isn't actively typing. While the editor is focused it is the source of truth; syncing
+  // from the prop mid-keystroke is what caused fast typing to reset the editor and jump the
+  // cursor to the bottom (a fast keystroke saves, then its echo arrives slightly stale).
   useEffect(() => {
-    if (editor && content !== editor.getHTML()) {
+    if (editor && !editor.isFocused && content !== editor.getHTML()) {
       editor.commands.setContent(content || '');
     }
   }, [content, editor]);
