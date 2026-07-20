@@ -103,7 +103,6 @@ export default function SettingsPage() {
   const [broadcastSending, setBroadcastSending] = useState(false);
   const [broadcastResult, setBroadcastResult] = useState(null);
   const [excludedIds, setExcludedIds] = useState(() => new Set()); // per-send opt-outs (e.g. surprise party)
-  const [showRecipients, setShowRecipients] = useState(false);
 
   // Base path helper (same logic as UnifiedDashboard)
   const getMyBasePath = () => {
@@ -340,7 +339,7 @@ export default function SettingsPage() {
 
   const openGroup = (g) => {
     setError(null); setSuccess(null); setBroadcastResult(null); setBroadcastMsg('');
-    setExcludedIds(new Set()); setShowRecipients(false);
+    setExcludedIds(new Set());
     setSelectedGroup(g);
     loadGroupData(g.id);
   };
@@ -454,7 +453,7 @@ export default function SettingsPage() {
       setBroadcastResult(data);
       setSuccess(`Sent to ${data.sentCount} contact${data.sentCount !== 1 ? 's' : ''}${data.failCount ? `, ${data.failCount} failed` : ''}.`);
       setBroadcastMsg('');
-      setExcludedIds(new Set()); setShowRecipients(false);
+      setExcludedIds(new Set());
       await loadGroupData(selectedGroup.id);
     } catch (err) {
       setError(err.message);
@@ -795,48 +794,10 @@ export default function SettingsPage() {
             <small className="form-hint" style={{ display: 'block' }}>{broadcastMsg.length} characters</small>
           </div>
 
-          {/* RECIPIENT CHOOSER — default everyone active, uncheck to exclude for THIS send */}
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '0.85rem', color: '#4a5568' }}>
-                Sending to <strong>{selectedCount}</strong> of {activeContacts.length} active
-              </span>
-              {activeContacts.length > 0 && (
-                <button type="button" onClick={() => setShowRecipients(v => !v)} style={{ background: 'none', border: 'none', color: '#2c5282', cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}>
-                  {showRecipients ? 'Done choosing' : 'Choose who ▾'}
-                </button>
-              )}
-            </div>
-            {excludedIds.size > 0 && !showRecipients && (
-              <small className="form-hint" style={{ display: 'block', color: '#c05621' }}>
-                {excludedIds.size} excluded from this message (still in the group)
-              </small>
-            )}
-            {showRecipients && (
-              <div style={{ marginTop: 8, border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', maxHeight: 260, overflowY: 'auto' }}>
-                <div style={{ display: 'flex', gap: 14, marginBottom: 8, fontSize: '0.8rem' }}>
-                  <button type="button" onClick={() => setExcludedIds(new Set())} style={{ background: 'none', border: 'none', color: '#2c5282', cursor: 'pointer', textDecoration: 'underline' }}>Select all</button>
-                  <button type="button" onClick={() => setExcludedIds(new Set(activeContacts.map(c => c.id)))} style={{ background: 'none', border: 'none', color: '#2c5282', cursor: 'pointer', textDecoration: 'underline' }}>Deselect all</button>
-                </div>
-                {activeContacts.map(c => {
-                  const included = !excludedIds.has(c.id);
-                  return (
-                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={included}
-                        onChange={() => setExcludedIds(prev => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
-                      />
-                      <span style={{ color: included ? '#2d3748' : '#a0aec0' }}>
-                        {c.name} <span style={{ color: '#a0aec0', fontSize: '0.8rem' }}>{fmtPhoneDisplay(c.phone)}</span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
+          <div style={{ fontSize: '0.85rem', color: excludedIds.size > 0 ? '#c05621' : '#4a5568', marginBottom: 8 }}>
+            Sending to <strong>{selectedCount}</strong> of {activeContacts.length} active
+            {excludedIds.size > 0 ? ` — ${excludedIds.size} unchecked below` : ''}
           </div>
-
           <button
             className="save-btn"
             disabled={broadcastSending || !broadcastMsg.trim() || selectedCount === 0}
@@ -857,7 +818,8 @@ export default function SettingsPage() {
           <div style={{ marginTop: 28 }}>
             <h3 style={{ fontSize: '1rem', margin: '0 0 4px', color: '#2d3748' }}>Contacts ({contacts.length})</h3>
             <p style={{ fontSize: '0.8rem', color: '#718096', margin: '0 0 12px' }}>
-              Toggle off to skip someone without deleting. Remove drops them entirely.
+              ☑ checked = gets this message. Uncheck to skip someone for this send only (e.g. a surprise party).
+              Toggle Active/Paused to skip long-term; ✕ removes them.
             </p>
 
             {isGroupOwner && (
@@ -892,6 +854,17 @@ export default function SettingsPage() {
                   const isActive = c.active !== false && c.optOut !== true;
                   return (
                     <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid #edf2f7' }}>
+                      {isActive ? (
+                        <input
+                          type="checkbox"
+                          checked={!excludedIds.has(c.id)}
+                          onChange={() => setExcludedIds(prev => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
+                          title={excludedIds.has(c.id) ? 'Excluded from this message' : 'Will get this message'}
+                          style={{ width: 18, height: 18, flex: '0 0 auto', cursor: 'pointer' }}
+                        />
+                      ) : (
+                        <span style={{ width: 18, flex: '0 0 auto' }} />
+                      )}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, color: isActive ? '#2d3748' : '#a0aec0' }}>{c.name}</div>
                         <div style={{ fontSize: '0.8rem', color: '#718096' }}>
