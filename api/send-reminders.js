@@ -82,7 +82,9 @@ export default async function handler(req, res) {
         'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
         'Content-Type': 'application/x-www-form-urlencoded'
       },
-      body: new URLSearchParams({ InboundRequestUrl: inboundUrl, InboundMethod: 'POST' })
+      // UseInboundWebhookOnNumber=false → route inbound to THIS service's InboundRequestUrl
+      // instead of the number's own (default/demo) webhook.
+      body: new URLSearchParams({ InboundRequestUrl: inboundUrl, InboundMethod: 'POST', UseInboundWebhookOnNumber: 'false' })
     });
     const data = await resp.json();
     return res.status(resp.ok ? 200 : 500).json({
