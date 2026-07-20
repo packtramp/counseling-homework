@@ -170,8 +170,9 @@ async function handleSmsReply(req, res) {
   const pretty = last10.length === 10 ? `(${last10.slice(0, 3)}) ${last10.slice(3, 6)}-${last10.slice(6)}` : from;
   const looksLikeOptOut = /\b(don'?t add me|remove me|unsubscribe|opt.?out|take me off|no thanks?)\b/i.test(body);
 
-  // Best-effort: match the sender's number to a contact name + group (across all groups).
-  let matchedName = '', matchedGroup = '';
+  // Best-effort: match the sender's number to a contact name + group (across all groups),
+  // and capture that group's owner so the reply is forwarded to the OWNER, not hardcoded.
+  let matchedName = '', matchedGroup = '', matchedOwnerUid = '';
   try {
     const db = admin.firestore();
     const groupsSnap = await db.collection('broadcastGroups').get();
@@ -182,10 +183,19 @@ async function handleSmsReply(req, res) {
         const c10 = cd.length === 11 && cd[0] === '1' ? cd.slice(1) : cd;
         return c10 && c10 === last10;
       });
-      if (hit) { matchedName = hit.data().name || ''; matchedGroup = g.data().name || ''; break; }
+      if (hit) { matchedName = hit.data().name || ''; matchedGroup = g.data().name || ''; matchedOwnerUid = g.data().ownerUid || ''; break; }
     }
   } catch (e) { console.error('reply name lookup failed:', e.message); }
   const who = matchedName ? `${matchedName} (${pretty})` : pretty;
+
+  // Route the forward to the matched group's OWNER email; fall back to the admin.
+  let toEmail = 'robdorsett@gmail.com';
+  try {
+    if (matchedOwnerUid) {
+      const od = await admin.firestore().collection('users').doc(matchedOwnerUid).get();
+      if (od.exists && od.data().email) toEmail = od.data().email;
+    }
+  } catch (e) { console.error('owner email lookup failed:', e.message); }
 
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.RESEND_FROM_EMAIL || 'reminders@counselinghomework.com';
@@ -196,7 +206,7 @@ async function handleSmsReply(req, res) {
         headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           from: `Reminder Broadcasts <${fromEmail}>`,
-          to: 'robdorsett@gmail.com',
+          to: toEmail,
           subject: `SMS reply from ${matchedName || pretty}${matchedGroup ? ` — ${matchedGroup}` : ''}${looksLikeOptOut ? ' — possible OPT-OUT' : ''}`,
           html: `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
