@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { db, auth, storage } from '../config/firebase';
-import { doc, getDoc, updateDoc, deleteField, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteField, Timestamp, collection, getDocs, addDoc, deleteDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import ProfilePhoto from '../components/ProfilePhoto';
@@ -87,6 +87,17 @@ export default function SettingsPage() {
   const [vacationEnd, setVacationEnd] = useState('');
   const [vacationSaving, setVacationSaving] = useState(false);
   const [feedbackScreenshotPreview, setFeedbackScreenshotPreview] = useState(null);
+
+  // Reminder Broadcasts (men's-group one-way SMS) — superAdmin only for now
+  const [contacts, setContacts] = useState([]);
+  const [broadcasts, setBroadcasts] = useState([]);
+  const [bcLoading, setBcLoading] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
+  const [addingContact, setAddingContact] = useState(false);
+  const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [broadcastSending, setBroadcastSending] = useState(false);
+  const [broadcastResult, setBroadcastResult] = useState(null);
 
   // Base path helper (same logic as UnifiedDashboard)
   const getMyBasePath = () => {
@@ -275,6 +286,105 @@ export default function SettingsPage() {
   const openView = (view) => {
     setError(null); setSuccess(null);
     setActiveView(view);
+  };
+
+  // ---- REMINDER BROADCASTS ----
+  const loadBroadcastData = async () => {
+    if (!user) return;
+    setBcLoading(true);
+    try {
+      const cSnap = await getDocs(collection(db, `users/${user.uid}/broadcastContacts`));
+      setContacts(
+        cSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      );
+      const bSnap = await getDocs(query(collection(db, `users/${user.uid}/broadcasts`), orderBy('sentAt', 'desc')));
+      setBroadcasts(bSnap.docs.slice(0, 10).map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      setError('Could not load broadcast data: ' + err.message);
+    } finally {
+      setBcLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeView === 'broadcasts') loadBroadcastData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView]);
+
+  const fmtPhoneDisplay = (p) => {
+    const d = String(p || '').replace(/\D/g, '');
+    if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+    if (d.length === 11 && d[0] === '1') return `(${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
+    return p;
+  };
+
+  const handleAddContact = async (e) => {
+    e.preventDefault();
+    setError(null); setSuccess(null);
+    const digits = newContactPhone.replace(/\D/g, '');
+    if (!newContactName.trim()) { setError('Name required'); return; }
+    if (digits.length < 10) { setError('Enter a valid phone number'); return; }
+    setAddingContact(true);
+    try {
+      await addDoc(collection(db, `users/${user.uid}/broadcastContacts`), {
+        name: newContactName.trim(),
+        phone: digits,
+        active: true,
+        optOut: false,
+        createdAt: serverTimestamp(),
+      });
+      setNewContactName(''); setNewContactPhone('');
+      await loadBroadcastData();
+    } catch (err) {
+      setError('Could not add contact: ' + err.message);
+    } finally {
+      setAddingContact(false);
+    }
+  };
+
+  const handleToggleContactActive = async (c) => {
+    try {
+      await updateDoc(doc(db, `users/${user.uid}/broadcastContacts/${c.id}`), { active: !(c.active !== false) });
+      setContacts(prev => prev.map(x => x.id === c.id ? { ...x, active: !(x.active !== false) } : x));
+    } catch (err) { setError('Could not update: ' + err.message); }
+  };
+
+  const handleDeleteContact = async (c) => {
+    if (!window.confirm(`Remove ${c.name} from the reminder list?`)) return;
+    try {
+      await deleteDoc(doc(db, `users/${user.uid}/broadcastContacts/${c.id}`));
+      setContacts(prev => prev.filter(x => x.id !== c.id));
+    } catch (err) { setError('Could not remove: ' + err.message); }
+  };
+
+  const handleSendBroadcast = async () => {
+    setError(null); setSuccess(null); setBroadcastResult(null);
+    const msg = broadcastMsg.trim();
+    if (!msg) { setError('Type a reminder first'); return; }
+    const activeCount = contacts.filter(c => c.active !== false && c.optOut !== true).length;
+    if (activeCount === 0) { setError('No active contacts to send to'); return; }
+    if (!window.confirm(`Send this reminder to ${activeCount} active contact${activeCount > 1 ? 's' : ''}?`)) return;
+    setBroadcastSending(true);
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const resp = await fetch('/api/toggle-counselor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+        body: JSON.stringify({ action: 'sendBroadcast', message: msg }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Send failed');
+      setBroadcastResult(data);
+      setSuccess(`Sent to ${data.sentCount} contact${data.sentCount !== 1 ? 's' : ''}${data.failCount ? `, ${data.failCount} failed` : ''}.`);
+      setBroadcastMsg('');
+      await loadBroadcastData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBroadcastSending(false);
+    }
   };
 
   if (loading) return <div className="loading">Loading...</div>;
@@ -516,6 +626,141 @@ export default function SettingsPage() {
         <SubViewHeader title="Super Admin" />
         <div className="settings-sub-view">
           <SuperAdminPanel user={user} auth={auth} db={db} />
+        </div>
+      </div>
+    );
+  }
+
+  if (activeView === 'broadcasts' && isSuperAdmin) {
+    const activeContacts = contacts.filter(c => c.active !== false && c.optOut !== true);
+    return (
+      <div className="settings-page">
+        <SubViewHeader title="Reminder Broadcasts" />
+        <div className="settings-sub-view">
+          {error && <div className="settings-error">{error}</div>}
+          {success && <div className="settings-success">{success}</div>}
+
+          <p style={{ fontSize: '0.9rem', color: '#4a5568', margin: '0 0 20px', lineHeight: 1.5 }}>
+            Send a one-way text reminder to your group. No group thread — each person gets it as a private text.
+            Add or remove anyone anytime. Recipients can reply <strong>STOP</strong> to opt out automatically.
+          </p>
+
+          {/* COMPOSE */}
+          <div className="form-group">
+            <label>Reminder Message</label>
+            <textarea
+              className="feedback-textarea"
+              value={broadcastMsg}
+              onChange={e => setBroadcastMsg(e.target.value)}
+              placeholder="e.g., Men's group tonight at 7pm at the church. See you there!"
+              rows={4}
+              maxLength={1000}
+            />
+            <small className="form-hint" style={{ display: 'block' }}>
+              {broadcastMsg.length} characters &middot; sends to {activeContacts.length} active contact{activeContacts.length !== 1 ? 's' : ''}
+            </small>
+          </div>
+          <button
+            className="save-btn"
+            disabled={broadcastSending || !broadcastMsg.trim() || activeContacts.length === 0}
+            onClick={handleSendBroadcast}
+          >
+            {broadcastSending ? 'Sending…' : `Send to ${activeContacts.length} active`}
+          </button>
+
+          {broadcastResult && (
+            <div style={{ marginTop: 12, fontSize: '0.85rem', color: '#4a5568' }}>
+              {broadcastResult.results?.filter(r => r.status === 'failed').map((r, i) => (
+                <div key={i} style={{ color: '#e53e3e' }}>✕ {r.name || r.phone}: {r.error}</div>
+              ))}
+            </div>
+          )}
+
+          {/* CONTACTS */}
+          <div style={{ marginTop: 28 }}>
+            <h3 style={{ fontSize: '1rem', margin: '0 0 4px', color: '#2d3748' }}>Contacts ({contacts.length})</h3>
+            <p style={{ fontSize: '0.8rem', color: '#718096', margin: '0 0 12px' }}>
+              Toggle off to skip someone without deleting. Remove drops them entirely.
+            </p>
+
+            <form onSubmit={handleAddContact} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+              <input
+                type="text"
+                value={newContactName}
+                onChange={e => setNewContactName(e.target.value)}
+                placeholder="Name"
+                style={{ flex: '1 1 120px', padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e0' }}
+              />
+              <input
+                type="tel"
+                value={newContactPhone}
+                onChange={e => setNewContactPhone(e.target.value)}
+                placeholder="(555) 123-4567"
+                style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e0' }}
+              />
+              <button type="submit" className="save-btn" style={{ flex: '0 0 auto', margin: 0 }} disabled={addingContact}>
+                {addingContact ? 'Adding…' : 'Add'}
+              </button>
+            </form>
+
+            {bcLoading ? (
+              <p style={{ color: '#718096' }}>Loading…</p>
+            ) : contacts.length === 0 ? (
+              <p style={{ color: '#a0aec0', fontStyle: 'italic' }}>No contacts yet. Add your first above.</p>
+            ) : (
+              <div>
+                {contacts.map(c => {
+                  const isActive = c.active !== false && c.optOut !== true;
+                  return (
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid #edf2f7' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, color: isActive ? '#2d3748' : '#a0aec0' }}>{c.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#718096' }}>
+                          {fmtPhoneDisplay(c.phone)}{c.optOut ? ' · opted out' : ''}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleToggleContactActive(c)}
+                        disabled={c.optOut === true}
+                        title={isActive ? 'Active — tap to pause' : 'Paused — tap to activate'}
+                        style={{
+                          fontSize: '0.75rem', padding: '3px 10px', borderRadius: 12, border: 'none', cursor: c.optOut ? 'not-allowed' : 'pointer',
+                          background: isActive ? '#c6f6d5' : '#e2e8f0', color: isActive ? '#276749' : '#718096', fontWeight: 600
+                        }}
+                      >
+                        {isActive ? 'Active' : 'Paused'}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteContact(c)}
+                        title="Remove"
+                        style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '1.1rem', padding: '0 4px' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* HISTORY */}
+          {broadcasts.length > 0 && (
+            <div style={{ marginTop: 28 }}>
+              <h3 style={{ fontSize: '1rem', margin: '0 0 12px', color: '#2d3748' }}>Recent Sends</h3>
+              {broadcasts.map(b => {
+                const when = b.sentAt?.toDate?.() || (b.sentAt?.seconds ? new Date(b.sentAt.seconds * 1000) : null);
+                return (
+                  <div key={b.id} style={{ padding: '10px 0', borderBottom: '1px solid #edf2f7' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#2d3748' }}>{b.message}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#718096', marginTop: 4 }}>
+                      {when ? when.toLocaleString() : '—'} · {b.sentCount}/{b.recipientCount} sent{b.failCount ? ` · ${b.failCount} failed` : ''}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -931,6 +1176,28 @@ export default function SettingsPage() {
             )}
           </div>
         </div>
+
+        {/* GROUP REMINDERS (superAdmin only — hidden until public) */}
+        {isSuperAdmin && (
+          <div className="settings-section">
+            <div className="settings-section-title">Group Reminders</div>
+            <div className="settings-group">
+              <button className="settings-row" onClick={() => openView('broadcasts')}>
+                <span className="settings-row-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 11-5.8-1.6"/></svg>
+                </span>
+                <span className="settings-row-content">
+                  <span className="settings-row-label">Reminder Broadcasts</span>
+                  <span className="settings-row-detail">One-way text reminders to a group</span>
+                </span>
+                <span className="settings-row-right">
+                  <span className="new-badge">NEW</span>
+                  <span className="settings-row-chevron">&rsaquo;</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* VACATION */}
         <div className="settings-section">

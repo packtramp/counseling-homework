@@ -91,6 +91,75 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Forbidden - requires superAdmin' });
     }
 
+    // One-way reminder broadcast to the caller's OWN contact list (men's group).
+    // Reads users/{caller}/broadcastContacts (active, non-opted-out) and texts each via
+    // the same Twilio Messaging Service used for reminders. Writes a history record.
+    if (action === 'sendBroadcast') {
+      const message = (req.body.message || '').trim();
+      if (!message) return res.status(400).json({ error: 'Message required' });
+      if (message.length > 1000) return res.status(400).json({ error: 'Message too long (max 1000)' });
+
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const bcAuthToken = process.env.TWILIO_AUTH_TOKEN;
+      const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+      if (!accountSid || !bcAuthToken || !messagingServiceSid) {
+        return res.status(500).json({ error: 'Twilio not configured' });
+      }
+
+      const contactsSnap = await db.collection(`users/${decodedToken.uid}/broadcastContacts`).get();
+      const contacts = contactsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(c => c.active !== false && c.optOut !== true && c.phone);
+      if (contacts.length === 0) {
+        return res.status(400).json({ error: 'No active contacts to send to' });
+      }
+
+      const results = [];
+      for (const c of contacts) {
+        const digits = String(c.phone).replace(/\D/g, '');
+        const toNumber = digits.length === 10 ? `+1${digits}` : `+${digits}`;
+        try {
+          const smsResp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${bcAuthToken}`).toString('base64'),
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({ To: toNumber, MessagingServiceSid: messagingServiceSid, Body: message })
+          });
+          if (smsResp.ok) {
+            const data = await smsResp.json();
+            results.push({ name: c.name || '', phone: c.phone, status: 'sent', sid: data.sid || null });
+          } else {
+            const err = await smsResp.json();
+            results.push({ name: c.name || '', phone: c.phone, status: 'failed', error: err.message || 'send failed' });
+          }
+        } catch (e) {
+          results.push({ name: c.name || '', phone: c.phone, status: 'failed', error: e.message });
+        }
+      }
+
+      const sentCount = results.filter(r => r.status === 'sent').length;
+      const failCount = results.length - sentCount;
+
+      let broadcastId = null;
+      try {
+        const ref = await db.collection(`users/${decodedToken.uid}/broadcasts`).add({
+          message,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          recipientCount: results.length,
+          sentCount,
+          failCount,
+          results
+        });
+        broadcastId = ref.id;
+      } catch (e) {
+        console.error('broadcast history write failed:', e.message);
+      }
+
+      return res.status(200).json({ success: true, broadcastId, sentCount, failCount, results });
+    }
+
     // Verify all users have reminder schedules filled out
     if (action === 'verifyReminders') {
       const results = { users: [], counselees: [] };

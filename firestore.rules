@@ -90,6 +90,15 @@ service cloud.firestore {
     }
 
     // Prayer Requests - user owns their own PRs, APs (in sharedWith) + counselors can read
+    // Reminder broadcast lists (men's-group one-way SMS). Owner-only CRUD.
+    // The actual SMS send + history-write happens server-side via the Admin SDK.
+    match /users/{userId}/broadcastContacts/{contactId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/broadcasts/{broadcastId} {
+      allow read, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
     match /users/{userId}/prayerRequests/{requestId} {
       // Owner can CRUD their own prayer requests
       allow read, write: if request.auth != null && request.auth.uid == userId;
