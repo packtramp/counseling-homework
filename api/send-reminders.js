@@ -112,6 +112,35 @@ export default async function handler(req, res) {
     return res.status(200).json({ receiverStatus: resp.status, receiverBody: text.slice(0, 160) });
   }
 
+  // Admin: diagnose the inbound SMS reply path. Pulls the Messaging Service inbound
+  // config, recent inbound messages, and recent Twilio error alerts (e.g. 11200 webhook
+  // failures). Read-only.
+  if (req.query?.smsDiag) {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const msgSvcSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+    const basic = 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+    const out = {};
+    try {
+      const svc = await (await fetch(`https://messaging.twilio.com/v1/Services/${msgSvcSid}`, { headers: { Authorization: basic } })).json();
+      out.service = {
+        inbound_request_url: svc.inbound_request_url,
+        inbound_method: svc.inbound_method,
+        use_inbound_webhook_on_number: svc.use_inbound_webhook_on_number,
+        fallback_url: svc.fallback_url,
+      };
+    } catch (e) { out.serviceError = e.message; }
+    try {
+      const msgs = await (await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?PageSize=10`, { headers: { Authorization: basic } })).json();
+      out.recentMessages = (msgs.messages || []).map(m => ({ dir: m.direction, from: m.from, to: m.to, body: (m.body || '').slice(0, 40), status: m.status, error: m.error_code, at: m.date_sent }));
+    } catch (e) { out.messagesError = e.message; }
+    try {
+      const alerts = await (await fetch(`https://monitor.twilio.com/v1/Alerts?PageSize=8`, { headers: { Authorization: basic } })).json();
+      out.recentAlerts = (alerts.alerts || []).map(a => ({ code: a.error_code, text: (a.alert_text || '').slice(0, 160), url: a.request_url, method: a.request_method, at: a.date_generated }));
+    } catch (e) { out.alertsError = e.message; }
+    return res.status(200).json(out);
+  }
+
   // Admin tools
   // Set default reminder schedule on all users missing it
   if (req.query?.setDefaultSchedule) {
