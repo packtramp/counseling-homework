@@ -85,19 +85,23 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, message: 'Welcome SMS sent' });
     }
 
-    // Verify caller is a superAdmin for all other actions
-    const callerDoc = await db.collection('users').doc(decodedToken.uid).get();
-    if (!callerDoc.exists || !callerDoc.data().isSuperAdmin) {
-      return res.status(403).json({ error: 'Forbidden - requires superAdmin' });
-    }
-
-    // One-way reminder broadcast to the caller's OWN contact list (men's group).
-    // Reads users/{caller}/broadcastContacts (active, non-opted-out) and texts each via
-    // the same Twilio Messaging Service used for reminders. Writes a history record.
+    // Group reminder broadcast — authorized by GROUP MEMBERSHIP (owner or invited sender),
+    // NOT superAdmin, so future co-senders can send without an elevated role. Reads the
+    // group's active/non-opted-out contacts and texts each via the same Twilio Messaging
+    // Service used for reminders. Writes a per-send history record under the group.
     if (action === 'sendBroadcast') {
+      const { groupId } = req.body;
       const message = (req.body.message || '').trim();
+      if (!groupId) return res.status(400).json({ error: 'groupId required' });
       if (!message) return res.status(400).json({ error: 'Message required' });
       if (message.length > 1000) return res.status(400).json({ error: 'Message too long (max 1000)' });
+
+      const groupDoc = await db.collection('broadcastGroups').doc(groupId).get();
+      if (!groupDoc.exists) return res.status(404).json({ error: 'Group not found' });
+      const group = groupDoc.data();
+      const isOwner = group.ownerUid === decodedToken.uid;
+      const isSender = Array.isArray(group.senderUids) && group.senderUids.includes(decodedToken.uid);
+      if (!isOwner && !isSender) return res.status(403).json({ error: 'Not authorized to send to this group' });
 
       const accountSid = process.env.TWILIO_ACCOUNT_SID;
       const bcAuthToken = process.env.TWILIO_AUTH_TOKEN;
@@ -106,7 +110,7 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Twilio not configured' });
       }
 
-      const contactsSnap = await db.collection(`users/${decodedToken.uid}/broadcastContacts`).get();
+      const contactsSnap = await db.collection(`broadcastGroups/${groupId}/contacts`).get();
       const contacts = contactsSnap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .filter(c => c.active !== false && c.optOut !== true && c.phone);
@@ -141,12 +145,16 @@ export default async function handler(req, res) {
 
       const sentCount = results.filter(r => r.status === 'sent').length;
       const failCount = results.length - sentCount;
+      let senderName = '';
+      try { senderName = (await db.collection('users').doc(decodedToken.uid).get()).data()?.name || ''; } catch (e) { /* ignore */ }
 
       let broadcastId = null;
       try {
-        const ref = await db.collection(`users/${decodedToken.uid}/broadcasts`).add({
+        const ref = await db.collection(`broadcastGroups/${groupId}/broadcasts`).add({
           message,
           sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          sentByUid: decodedToken.uid,
+          sentByName: senderName,
           recipientCount: results.length,
           sentCount,
           failCount,
@@ -158,6 +166,12 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ success: true, broadcastId, sentCount, failCount, results });
+    }
+
+    // Verify caller is a superAdmin for all other actions
+    const callerDoc = await db.collection('users').doc(decodedToken.uid).get();
+    if (!callerDoc.exists || !callerDoc.data().isSuperAdmin) {
+      return res.status(403).json({ error: 'Forbidden - requires superAdmin' });
     }
 
     // Verify all users have reminder schedules filled out

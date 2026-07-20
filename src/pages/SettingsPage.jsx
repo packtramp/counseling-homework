@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { db, auth, storage } from '../config/firebase';
-import { doc, getDoc, updateDoc, deleteField, Timestamp, collection, getDocs, addDoc, deleteDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteField, Timestamp, collection, getDocs, addDoc, deleteDoc, query, where, orderBy, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { updateProfile, updateEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import ProfilePhoto from '../components/ProfilePhoto';
@@ -88,7 +88,11 @@ export default function SettingsPage() {
   const [vacationSaving, setVacationSaving] = useState(false);
   const [feedbackScreenshotPreview, setFeedbackScreenshotPreview] = useState(null);
 
-  // Reminder Broadcasts (men's-group one-way SMS) — superAdmin only for now
+  // Reminder Broadcasts (group one-way SMS) — superAdmin only for now
+  const [groups, setGroups] = useState([]);
+  const [selectedGroup, setSelectedGroup] = useState(null); // { id, name, ownerUid, senderUids }
+  const [newGroupName, setNewGroupName] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [broadcasts, setBroadcasts] = useState([]);
   const [bcLoading, setBcLoading] = useState(false);
@@ -288,30 +292,90 @@ export default function SettingsPage() {
     setActiveView(view);
   };
 
-  // ---- REMINDER BROADCASTS ----
-  const loadBroadcastData = async () => {
+  // ---- REMINDER BROADCASTS (groups) ----
+  const loadGroups = async () => {
     if (!user) return;
     setBcLoading(true);
     try {
-      const cSnap = await getDocs(collection(db, `users/${user.uid}/broadcastContacts`));
+      // Groups I own + groups I'm an invited sender on.
+      const ownedSnap = await getDocs(query(collection(db, 'broadcastGroups'), where('ownerUid', '==', user.uid)));
+      let senderDocs = [];
+      try {
+        const senderSnap = await getDocs(query(collection(db, 'broadcastGroups'), where('senderUids', 'array-contains', user.uid)));
+        senderDocs = senderSnap.docs;
+      } catch { /* ignore */ }
+      const map = new Map();
+      [...ownedSnap.docs, ...senderDocs].forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+      setGroups([...map.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+    } catch (err) {
+      setError('Could not load groups: ' + err.message);
+    } finally {
+      setBcLoading(false);
+    }
+  };
+
+  const loadGroupData = async (groupId) => {
+    if (!user || !groupId) return;
+    setBcLoading(true);
+    try {
+      const cSnap = await getDocs(collection(db, `broadcastGroups/${groupId}/contacts`));
       setContacts(
-        cSnap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        cSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''))
       );
-      const bSnap = await getDocs(query(collection(db, `users/${user.uid}/broadcasts`), orderBy('sentAt', 'desc')));
+      const bSnap = await getDocs(query(collection(db, `broadcastGroups/${groupId}/broadcasts`), orderBy('sentAt', 'desc')));
       setBroadcasts(bSnap.docs.slice(0, 10).map(d => ({ id: d.id, ...d.data() })));
     } catch (err) {
-      setError('Could not load broadcast data: ' + err.message);
+      setError('Could not load group: ' + err.message);
     } finally {
       setBcLoading(false);
     }
   };
 
   useEffect(() => {
-    if (activeView === 'broadcasts') loadBroadcastData();
+    if (activeView === 'broadcasts') { setSelectedGroup(null); loadGroups(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView]);
+
+  const openGroup = (g) => {
+    setError(null); setSuccess(null); setBroadcastResult(null); setBroadcastMsg('');
+    setSelectedGroup(g);
+    loadGroupData(g.id);
+  };
+
+  const handleCreateGroup = async (e) => {
+    e.preventDefault();
+    setError(null); setSuccess(null);
+    if (!newGroupName.trim()) { setError('Group name required'); return; }
+    setCreatingGroup(true);
+    try {
+      const ref = await addDoc(collection(db, 'broadcastGroups'), {
+        name: newGroupName.trim(),
+        ownerUid: user.uid,
+        senderUids: [user.uid],
+        createdAt: serverTimestamp(),
+      });
+      setNewGroupName('');
+      await loadGroups();
+      openGroup({ id: ref.id, name: newGroupName.trim(), ownerUid: user.uid, senderUids: [user.uid] });
+    } catch (err) {
+      setError('Could not create group: ' + err.message);
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const handleDeleteGroup = async (g) => {
+    if (g.ownerUid !== user.uid) { setError('Only the group owner can delete it.'); return; }
+    if (!window.confirm(`Delete the "${g.name}" group and all its contacts? This cannot be undone.`)) return;
+    try {
+      // Best-effort: delete contact docs, then the group doc.
+      const cSnap = await getDocs(collection(db, `broadcastGroups/${g.id}/contacts`));
+      await Promise.all(cSnap.docs.map(d => deleteDoc(doc(db, `broadcastGroups/${g.id}/contacts/${d.id}`))));
+      await deleteDoc(doc(db, `broadcastGroups/${g.id}`));
+      setSelectedGroup(null);
+      await loadGroups();
+    } catch (err) { setError('Could not delete group: ' + err.message); }
+  };
 
   const fmtPhoneDisplay = (p) => {
     const d = String(p || '').replace(/\D/g, '');
@@ -320,15 +384,18 @@ export default function SettingsPage() {
     return p;
   };
 
+  const isGroupOwner = selectedGroup && selectedGroup.ownerUid === user?.uid;
+
   const handleAddContact = async (e) => {
     e.preventDefault();
     setError(null); setSuccess(null);
+    if (!selectedGroup) return;
     const digits = newContactPhone.replace(/\D/g, '');
     if (!newContactName.trim()) { setError('Name required'); return; }
     if (digits.length < 10) { setError('Enter a valid phone number'); return; }
     setAddingContact(true);
     try {
-      await addDoc(collection(db, `users/${user.uid}/broadcastContacts`), {
+      await addDoc(collection(db, `broadcastGroups/${selectedGroup.id}/contacts`), {
         name: newContactName.trim(),
         phone: digits,
         active: true,
@@ -336,7 +403,7 @@ export default function SettingsPage() {
         createdAt: serverTimestamp(),
       });
       setNewContactName(''); setNewContactPhone('');
-      await loadBroadcastData();
+      await loadGroupData(selectedGroup.id);
     } catch (err) {
       setError('Could not add contact: ' + err.message);
     } finally {
@@ -345,41 +412,44 @@ export default function SettingsPage() {
   };
 
   const handleToggleContactActive = async (c) => {
+    if (!selectedGroup) return;
     try {
-      await updateDoc(doc(db, `users/${user.uid}/broadcastContacts/${c.id}`), { active: !(c.active !== false) });
+      await updateDoc(doc(db, `broadcastGroups/${selectedGroup.id}/contacts/${c.id}`), { active: !(c.active !== false) });
       setContacts(prev => prev.map(x => x.id === c.id ? { ...x, active: !(x.active !== false) } : x));
     } catch (err) { setError('Could not update: ' + err.message); }
   };
 
   const handleDeleteContact = async (c) => {
-    if (!window.confirm(`Remove ${c.name} from the reminder list?`)) return;
+    if (!selectedGroup) return;
+    if (!window.confirm(`Remove ${c.name} from the ${selectedGroup.name} list?`)) return;
     try {
-      await deleteDoc(doc(db, `users/${user.uid}/broadcastContacts/${c.id}`));
+      await deleteDoc(doc(db, `broadcastGroups/${selectedGroup.id}/contacts/${c.id}`));
       setContacts(prev => prev.filter(x => x.id !== c.id));
     } catch (err) { setError('Could not remove: ' + err.message); }
   };
 
   const handleSendBroadcast = async () => {
     setError(null); setSuccess(null); setBroadcastResult(null);
+    if (!selectedGroup) return;
     const msg = broadcastMsg.trim();
     if (!msg) { setError('Type a reminder first'); return; }
     const activeCount = contacts.filter(c => c.active !== false && c.optOut !== true).length;
     if (activeCount === 0) { setError('No active contacts to send to'); return; }
-    if (!window.confirm(`Send this reminder to ${activeCount} active contact${activeCount > 1 ? 's' : ''}?`)) return;
+    if (!window.confirm(`Send this reminder to ${activeCount} active contact${activeCount > 1 ? 's' : ''} in ${selectedGroup.name}?`)) return;
     setBroadcastSending(true);
     try {
       const idToken = await auth.currentUser.getIdToken();
       const resp = await fetch('/api/toggle-counselor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-        body: JSON.stringify({ action: 'sendBroadcast', message: msg }),
+        body: JSON.stringify({ action: 'sendBroadcast', groupId: selectedGroup.id, message: msg }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'Send failed');
       setBroadcastResult(data);
       setSuccess(`Sent to ${data.sentCount} contact${data.sentCount !== 1 ? 's' : ''}${data.failCount ? `, ${data.failCount} failed` : ''}.`);
       setBroadcastMsg('');
-      await loadBroadcastData();
+      await loadGroupData(selectedGroup.id);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -631,8 +701,8 @@ export default function SettingsPage() {
     );
   }
 
-  if (activeView === 'broadcasts' && isSuperAdmin) {
-    const activeContacts = contacts.filter(c => c.active !== false && c.optOut !== true);
+  if (activeView === 'broadcasts' && isSuperAdmin && !selectedGroup) {
+    // ---- GROUP LIST ----
     return (
       <div className="settings-page">
         <SubViewHeader title="Reminder Broadcasts" />
@@ -641,9 +711,68 @@ export default function SettingsPage() {
           {success && <div className="settings-success">{success}</div>}
 
           <p style={{ fontSize: '0.9rem', color: '#4a5568', margin: '0 0 20px', lineHeight: 1.5 }}>
-            Send a one-way text reminder to your group. No group thread — each person gets it as a private text.
-            Add or remove anyone anytime. Recipients can reply <strong>STOP</strong> to opt out automatically.
+            Create a group, add people, and send one-way text reminders. Each person gets a private
+            text — no group thread. Recipients can reply <strong>STOP</strong> to opt out automatically.
           </p>
+
+          {bcLoading ? (
+            <p style={{ color: '#718096' }}>Loading…</p>
+          ) : groups.length === 0 ? (
+            <p style={{ color: '#a0aec0', fontStyle: 'italic', marginBottom: 20 }}>No groups yet. Create your first below.</p>
+          ) : (
+            <div style={{ marginBottom: 20 }}>
+              {groups.map(g => (
+                <button
+                  key={g.id}
+                  className="settings-row"
+                  onClick={() => openGroup(g)}
+                  style={{ width: '100%' }}
+                >
+                  <span className="settings-row-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                  </span>
+                  <span className="settings-row-content">
+                    <span className="settings-row-label">{g.name}</span>
+                    <span className="settings-row-detail">{g.ownerUid === user?.uid ? 'You own this group' : 'Shared with you (sender)'}</span>
+                  </span>
+                  <span className="settings-row-chevron">&rsaquo;</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <form onSubmit={handleCreateGroup} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              value={newGroupName}
+              onChange={e => setNewGroupName(e.target.value)}
+              placeholder="New group name (e.g., Men's Group)"
+              style={{ flex: '1 1 180px', padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e0' }}
+            />
+            <button type="submit" className="save-btn" style={{ flex: '0 0 auto', margin: 0 }} disabled={creatingGroup}>
+              {creatingGroup ? 'Creating…' : '+ New Group'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeView === 'broadcasts' && isSuperAdmin && selectedGroup) {
+    // ---- SELECTED GROUP ----
+    const activeContacts = contacts.filter(c => c.active !== false && c.optOut !== true);
+    return (
+      <div className="settings-page">
+        <div className="settings-page-header">
+          <button className="settings-back-btn" onClick={() => { setSelectedGroup(null); loadGroups(); }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+            <span>Groups</span>
+          </button>
+          <h1 className="settings-page-title">{selectedGroup.name}</h1>
+        </div>
+        <div className="settings-sub-view">
+          {error && <div className="settings-error">{error}</div>}
+          {success && <div className="settings-success">{success}</div>}
 
           {/* COMPOSE */}
           <div className="form-group">
@@ -668,9 +797,9 @@ export default function SettingsPage() {
             {broadcastSending ? 'Sending…' : `Send to ${activeContacts.length} active`}
           </button>
 
-          {broadcastResult && (
-            <div style={{ marginTop: 12, fontSize: '0.85rem', color: '#4a5568' }}>
-              {broadcastResult.results?.filter(r => r.status === 'failed').map((r, i) => (
+          {broadcastResult && broadcastResult.results?.some(r => r.status === 'failed') && (
+            <div style={{ marginTop: 12, fontSize: '0.85rem' }}>
+              {broadcastResult.results.filter(r => r.status === 'failed').map((r, i) => (
                 <div key={i} style={{ color: '#e53e3e' }}>✕ {r.name || r.phone}: {r.error}</div>
               ))}
             </div>
@@ -683,30 +812,32 @@ export default function SettingsPage() {
               Toggle off to skip someone without deleting. Remove drops them entirely.
             </p>
 
-            <form onSubmit={handleAddContact} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-              <input
-                type="text"
-                value={newContactName}
-                onChange={e => setNewContactName(e.target.value)}
-                placeholder="Name"
-                style={{ flex: '1 1 120px', padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e0' }}
-              />
-              <input
-                type="tel"
-                value={newContactPhone}
-                onChange={e => setNewContactPhone(e.target.value)}
-                placeholder="(555) 123-4567"
-                style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e0' }}
-              />
-              <button type="submit" className="save-btn" style={{ flex: '0 0 auto', margin: 0 }} disabled={addingContact}>
-                {addingContact ? 'Adding…' : 'Add'}
-              </button>
-            </form>
+            {isGroupOwner && (
+              <form onSubmit={handleAddContact} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                <input
+                  type="text"
+                  value={newContactName}
+                  onChange={e => setNewContactName(e.target.value)}
+                  placeholder="Name"
+                  style={{ flex: '1 1 120px', padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e0' }}
+                />
+                <input
+                  type="tel"
+                  value={newContactPhone}
+                  onChange={e => setNewContactPhone(e.target.value)}
+                  placeholder="(555) 123-4567"
+                  style={{ flex: '1 1 140px', padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e0' }}
+                />
+                <button type="submit" className="save-btn" style={{ flex: '0 0 auto', margin: 0 }} disabled={addingContact}>
+                  {addingContact ? 'Adding…' : 'Add'}
+                </button>
+              </form>
+            )}
 
             {bcLoading ? (
               <p style={{ color: '#718096' }}>Loading…</p>
             ) : contacts.length === 0 ? (
-              <p style={{ color: '#a0aec0', fontStyle: 'italic' }}>No contacts yet. Add your first above.</p>
+              <p style={{ color: '#a0aec0', fontStyle: 'italic' }}>No contacts yet.{isGroupOwner ? ' Add your first above.' : ''}</p>
             ) : (
               <div>
                 {contacts.map(c => {
@@ -719,24 +850,28 @@ export default function SettingsPage() {
                           {fmtPhoneDisplay(c.phone)}{c.optOut ? ' · opted out' : ''}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleToggleContactActive(c)}
-                        disabled={c.optOut === true}
-                        title={isActive ? 'Active — tap to pause' : 'Paused — tap to activate'}
-                        style={{
-                          fontSize: '0.75rem', padding: '3px 10px', borderRadius: 12, border: 'none', cursor: c.optOut ? 'not-allowed' : 'pointer',
-                          background: isActive ? '#c6f6d5' : '#e2e8f0', color: isActive ? '#276749' : '#718096', fontWeight: 600
-                        }}
-                      >
-                        {isActive ? 'Active' : 'Paused'}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteContact(c)}
-                        title="Remove"
-                        style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '1.1rem', padding: '0 4px' }}
-                      >
-                        ✕
-                      </button>
+                      {isGroupOwner && (
+                        <>
+                          <button
+                            onClick={() => handleToggleContactActive(c)}
+                            disabled={c.optOut === true}
+                            title={isActive ? 'Active — tap to pause' : 'Paused — tap to activate'}
+                            style={{
+                              fontSize: '0.75rem', padding: '3px 10px', borderRadius: 12, border: 'none', cursor: c.optOut ? 'not-allowed' : 'pointer',
+                              background: isActive ? '#c6f6d5' : '#e2e8f0', color: isActive ? '#276749' : '#718096', fontWeight: 600
+                            }}
+                          >
+                            {isActive ? 'Active' : 'Paused'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteContact(c)}
+                            title="Remove"
+                            style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '1.1rem', padding: '0 4px' }}
+                          >
+                            ✕
+                          </button>
+                        </>
+                      )}
                     </div>
                   );
                 })}
@@ -759,6 +894,18 @@ export default function SettingsPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* DELETE GROUP */}
+          {isGroupOwner && (
+            <div style={{ marginTop: 32 }}>
+              <button
+                onClick={() => handleDeleteGroup(selectedGroup)}
+                style={{ background: 'none', border: '1px solid #e53e3e', color: '#e53e3e', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem' }}
+              >
+                Delete this group
+              </button>
             </div>
           )}
         </div>

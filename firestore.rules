@@ -90,13 +90,32 @@ service cloud.firestore {
     }
 
     // Prayer Requests - user owns their own PRs, APs (in sharedWith) + counselors can read
-    // Reminder broadcast lists (men's-group one-way SMS). Owner-only CRUD.
+    // Reminder broadcast GROUPS (one-way group SMS, e.g. men's group).
+    // Owner manages the group + roster; invited senders (in senderUids) can read + send.
     // The actual SMS send + history-write happens server-side via the Admin SDK.
-    match /users/{userId}/broadcastContacts/{contactId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    match /users/{userId}/broadcasts/{broadcastId} {
-      allow read, delete: if request.auth != null && request.auth.uid == userId;
+    match /broadcastGroups/{groupId} {
+      allow read: if request.auth != null &&
+        (resource.data.ownerUid == request.auth.uid ||
+         (resource.data.senderUids != null && request.auth.uid in resource.data.senderUids));
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+
+      match /contacts/{contactId} {
+        function parentGroup() { return get(/databases/$(database)/documents/broadcastGroups/$(groupId)).data; }
+        // Owner manages the roster; senders can read it.
+        allow read: if request.auth != null &&
+          (parentGroup().ownerUid == request.auth.uid ||
+           (parentGroup().senderUids != null && request.auth.uid in parentGroup().senderUids));
+        allow write: if request.auth != null && parentGroup().ownerUid == request.auth.uid;
+      }
+      match /broadcasts/{broadcastId} {
+        function parentGroup() { return get(/databases/$(database)/documents/broadcastGroups/$(groupId)).data; }
+        // History is written server-side (Admin SDK). Owner + senders can read; owner can delete.
+        allow read: if request.auth != null &&
+          (parentGroup().ownerUid == request.auth.uid ||
+           (parentGroup().senderUids != null && request.auth.uid in parentGroup().senderUids));
+        allow delete: if request.auth != null && parentGroup().ownerUid == request.auth.uid;
+      }
     }
 
     match /users/{userId}/prayerRequests/{requestId} {
