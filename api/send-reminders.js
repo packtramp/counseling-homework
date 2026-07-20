@@ -102,7 +102,8 @@ export default async function handler(req, res) {
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     if (!authToken) return res.status(500).json({ error: 'Missing TWILIO_AUTH_TOKEN' });
     const url = 'https://counselinghomework.com/api/partner-response?sms=1';
-    const params = { Body: 'Self-test reply — please ignore (dont add me test)', From: '+12565550000', MessageSid: 'SMselftest0000' };
+    const fromNum = req.query.from ? String(req.query.from) : '+12565550000';
+    const params = { Body: 'Self-test reply — please ignore', From: fromNum, MessageSid: 'SMselftest0000' };
     const data = Object.keys(params).sort().reduce((acc, k) => acc + k + params[k], url);
     const sig = crypto.createHmac('sha1', authToken).update(Buffer.from(data, 'utf-8')).digest('base64');
     const resp = await fetch(url, {

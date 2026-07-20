@@ -166,10 +166,26 @@ async function handleSmsReply(req, res) {
   const from = req.body?.From || '';
   const body = (req.body?.Body || '').trim();
   const digits = String(from).replace(/\D/g, '');
-  const pretty = digits.length === 11 && digits[0] === '1'
-    ? `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
-    : from;
+  const last10 = digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits;
+  const pretty = last10.length === 10 ? `(${last10.slice(0, 3)}) ${last10.slice(3, 6)}-${last10.slice(6)}` : from;
   const looksLikeOptOut = /\b(don'?t add me|remove me|unsubscribe|opt.?out|take me off|no thanks?)\b/i.test(body);
+
+  // Best-effort: match the sender's number to a contact name + group (across all groups).
+  let matchedName = '', matchedGroup = '';
+  try {
+    const db = admin.firestore();
+    const groupsSnap = await db.collection('broadcastGroups').get();
+    for (const g of groupsSnap.docs) {
+      const cs = await db.collection(`broadcastGroups/${g.id}/contacts`).get();
+      const hit = cs.docs.find(d => {
+        const cd = String(d.data().phone || '').replace(/\D/g, '');
+        const c10 = cd.length === 11 && cd[0] === '1' ? cd.slice(1) : cd;
+        return c10 && c10 === last10;
+      });
+      if (hit) { matchedName = hit.data().name || ''; matchedGroup = g.data().name || ''; break; }
+    }
+  } catch (e) { console.error('reply name lookup failed:', e.message); }
+  const who = matchedName ? `${matchedName} (${pretty})` : pretty;
 
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.RESEND_FROM_EMAIL || 'reminders@counselinghomework.com';
@@ -181,11 +197,11 @@ async function handleSmsReply(req, res) {
         body: JSON.stringify({
           from: `Reminder Broadcasts <${fromEmail}>`,
           to: 'robdorsett@gmail.com',
-          subject: `SMS reply from ${pretty}${looksLikeOptOut ? ' — possible OPT-OUT' : ''}`,
+          subject: `SMS reply from ${matchedName || pretty}${matchedGroup ? ` — ${matchedGroup}` : ''}${looksLikeOptOut ? ' — possible OPT-OUT' : ''}`,
           html: `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
               <h2 style="color: #2c5282; margin-bottom: 4px;">New reply to a broadcast</h2>
-              <p style="margin: 0 0 12px; color: #718096; font-size: 14px;">From <strong>${pretty}</strong></p>
+              <p style="margin: 0 0 12px; color: #718096; font-size: 14px;">From <strong>${who}</strong>${matchedGroup ? ` &middot; ${matchedGroup}` : ''}</p>
               ${looksLikeOptOut ? `<p style="background:#fed7d7;color:#822727;padding:8px 12px;border-radius:6px;font-weight:600;">This looks like an opt-out request — you may want to pause or remove this contact.</p>` : ''}
               <blockquote style="border-left: 3px solid #cbd5e0; margin: 12px 0; padding: 4px 14px; color: #2d3748; font-size: 15px; white-space: pre-wrap;">${body.replace(/</g, '&lt;')}</blockquote>
               <p style="color: #a0aec0; font-size: 12px; margin-top: 20px;">One-way reminder system — replies are forwarded to you, not to the group. STOP/HELP are handled automatically by the carrier.</p>
