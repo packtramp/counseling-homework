@@ -133,7 +133,64 @@ async function handleAuthenticatedResponse(req, res) {
   return res.status(200).json({ success: true, status: action === 'accept' ? 'accepted' : 'accepted_private' });
 }
 
+// Inbound SMS reply forwarder. Twilio POSTs here (form-encoded) when someone replies to a
+// broadcast. Gated by the ?sms=<SMS_WEBHOOK_SECRET> marker in the configured webhook URL.
+// Forwards the reply to the admin email via Resend and returns empty TwiML (no auto-reply).
+async function handleSmsReply(req, res) {
+  const twiml = (extra = '') => {
+    res.setHeader('Content-Type', 'text/xml');
+    return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><Response>${extra}</Response>`);
+  };
+
+  if (!process.env.SMS_WEBHOOK_SECRET || req.query.sms !== process.env.SMS_WEBHOOK_SECRET) {
+    return res.status(403).send('Forbidden');
+  }
+
+  const from = req.body?.From || '';
+  const body = (req.body?.Body || '').trim();
+  const digits = String(from).replace(/\D/g, '');
+  const pretty = digits.length === 11 && digits[0] === '1'
+    ? `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
+    : from;
+  const looksLikeOptOut = /\b(don'?t add me|remove me|unsubscribe|opt.?out|take me off|no thanks?)\b/i.test(body);
+
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.RESEND_FROM_EMAIL || 'reminders@counselinghomework.com';
+  if (apiKey) {
+    try {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: `Reminder Broadcasts <${fromEmail}>`,
+          to: 'robdorsett@gmail.com',
+          subject: `SMS reply from ${pretty}${looksLikeOptOut ? ' — possible OPT-OUT' : ''}`,
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #2c5282; margin-bottom: 4px;">New reply to a broadcast</h2>
+              <p style="margin: 0 0 12px; color: #718096; font-size: 14px;">From <strong>${pretty}</strong></p>
+              ${looksLikeOptOut ? `<p style="background:#fed7d7;color:#822727;padding:8px 12px;border-radius:6px;font-weight:600;">This looks like an opt-out request — you may want to pause or remove this contact.</p>` : ''}
+              <blockquote style="border-left: 3px solid #cbd5e0; margin: 12px 0; padding: 4px 14px; color: #2d3748; font-size: 15px; white-space: pre-wrap;">${body.replace(/</g, '&lt;')}</blockquote>
+              <p style="color: #a0aec0; font-size: 12px; margin-top: 20px;">One-way reminder system — replies are forwarded to you, not to the group. STOP/HELP are handled automatically by the carrier.</p>
+            </div>
+          `
+        })
+      });
+    } catch (err) {
+      console.error('SMS reply forward failed:', err.message);
+    }
+  }
+
+  // Empty TwiML → Twilio sends no auto-reply back to the sender.
+  return twiml();
+}
+
 export default async function handler(req, res) {
+  // Twilio inbound SMS reply (form POST with ?sms=<secret> marker).
+  if (req.method === 'POST' && req.query?.sms !== undefined) {
+    try { return await handleSmsReply(req, res); }
+    catch (e) { console.error('sms reply error:', e); res.setHeader('Content-Type', 'text/xml'); return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>'); }
+  }
   // In-app authenticated response (JSON). The GET path below is the email magic-link (HTML).
   if (req.method === 'POST') {
     try { return await handleAuthenticatedResponse(req, res); }

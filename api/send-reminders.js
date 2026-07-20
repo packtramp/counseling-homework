@@ -64,6 +64,34 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Firebase not initialized' });
   }
 
+  // Admin: point the Twilio Messaging Service inbound webhook at our reply forwarder.
+  // Runs on Vercel where the Twilio creds live. One-time (or after a URL change).
+  if (req.query?.configureSmsWebhook) {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const msgSvcSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+    const webhookSecret = process.env.SMS_WEBHOOK_SECRET;
+    if (!accountSid || !authToken || !msgSvcSid || !webhookSecret) {
+      return res.status(500).json({ error: 'Missing Twilio creds or SMS_WEBHOOK_SECRET' });
+    }
+    const inboundUrl = `https://counselinghomework.com/api/partner-response?sms=${webhookSecret}`;
+    const resp = await fetch(`https://messaging.twilio.com/v1/Services/${msgSvcSid}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({ InboundRequestUrl: inboundUrl, InboundMethod: 'POST' })
+    });
+    const data = await resp.json();
+    return res.status(resp.ok ? 200 : 500).json({
+      ok: resp.ok,
+      configuredInboundUrl: `https://counselinghomework.com/api/partner-response?sms=***`,
+      twilioInboundRequestUrl: data.inbound_request_url ? data.inbound_request_url.replace(/sms=[^&]+/, 'sms=***') : undefined,
+      twilioError: resp.ok ? undefined : data
+    });
+  }
+
   // Admin tools
   // Set default reminder schedule on all users missing it
   if (req.query?.setDefaultSchedule) {
