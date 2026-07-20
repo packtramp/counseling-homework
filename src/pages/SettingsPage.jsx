@@ -102,6 +102,8 @@ export default function SettingsPage() {
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcastSending, setBroadcastSending] = useState(false);
   const [broadcastResult, setBroadcastResult] = useState(null);
+  const [excludedIds, setExcludedIds] = useState(() => new Set()); // per-send opt-outs (e.g. surprise party)
+  const [showRecipients, setShowRecipients] = useState(false);
 
   // Base path helper (same logic as UnifiedDashboard)
   const getMyBasePath = () => {
@@ -338,6 +340,7 @@ export default function SettingsPage() {
 
   const openGroup = (g) => {
     setError(null); setSuccess(null); setBroadcastResult(null); setBroadcastMsg('');
+    setExcludedIds(new Set()); setShowRecipients(false);
     setSelectedGroup(g);
     loadGroupData(g.id);
   };
@@ -433,22 +436,25 @@ export default function SettingsPage() {
     if (!selectedGroup) return;
     const msg = broadcastMsg.trim();
     if (!msg) { setError('Type a reminder first'); return; }
-    const activeCount = contacts.filter(c => c.active !== false && c.optOut !== true).length;
-    if (activeCount === 0) { setError('No active contacts to send to'); return; }
-    if (!window.confirm(`Send this reminder to ${activeCount} active contact${activeCount > 1 ? 's' : ''} in ${selectedGroup.name}?`)) return;
+    const active = contacts.filter(c => c.active !== false && c.optOut !== true);
+    const recipients = active.filter(c => !excludedIds.has(c.id));
+    if (recipients.length === 0) { setError('No recipients selected'); return; }
+    const exNote = excludedIds.size > 0 ? ` (excluding ${excludedIds.size})` : '';
+    if (!window.confirm(`Send this reminder to ${recipients.length} of ${active.length} in ${selectedGroup.name}${exNote}?`)) return;
     setBroadcastSending(true);
     try {
       const idToken = await auth.currentUser.getIdToken();
       const resp = await fetch('/api/toggle-counselor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-        body: JSON.stringify({ action: 'sendBroadcast', groupId: selectedGroup.id, message: msg }),
+        body: JSON.stringify({ action: 'sendBroadcast', groupId: selectedGroup.id, message: msg, excludeIds: [...excludedIds] }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'Send failed');
       setBroadcastResult(data);
       setSuccess(`Sent to ${data.sentCount} contact${data.sentCount !== 1 ? 's' : ''}${data.failCount ? `, ${data.failCount} failed` : ''}.`);
       setBroadcastMsg('');
+      setExcludedIds(new Set()); setShowRecipients(false);
       await loadGroupData(selectedGroup.id);
     } catch (err) {
       setError(err.message);
@@ -761,6 +767,7 @@ export default function SettingsPage() {
   if (activeView === 'broadcasts' && isSuperAdmin && selectedGroup) {
     // ---- SELECTED GROUP ----
     const activeContacts = contacts.filter(c => c.active !== false && c.optOut !== true);
+    const selectedCount = activeContacts.filter(c => !excludedIds.has(c.id)).length;
     return (
       <div className="settings-page">
         <div className="settings-page-header">
@@ -785,16 +792,57 @@ export default function SettingsPage() {
               rows={4}
               maxLength={1000}
             />
-            <small className="form-hint" style={{ display: 'block' }}>
-              {broadcastMsg.length} characters &middot; sends to {activeContacts.length} active contact{activeContacts.length !== 1 ? 's' : ''}
-            </small>
+            <small className="form-hint" style={{ display: 'block' }}>{broadcastMsg.length} characters</small>
           </div>
+
+          {/* RECIPIENT CHOOSER — default everyone active, uncheck to exclude for THIS send */}
+          <div className="form-group">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.85rem', color: '#4a5568' }}>
+                Sending to <strong>{selectedCount}</strong> of {activeContacts.length} active
+              </span>
+              {activeContacts.length > 0 && (
+                <button type="button" onClick={() => setShowRecipients(v => !v)} style={{ background: 'none', border: 'none', color: '#2c5282', cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}>
+                  {showRecipients ? 'Done choosing' : 'Choose who ▾'}
+                </button>
+              )}
+            </div>
+            {excludedIds.size > 0 && !showRecipients && (
+              <small className="form-hint" style={{ display: 'block', color: '#c05621' }}>
+                {excludedIds.size} excluded from this message (still in the group)
+              </small>
+            )}
+            {showRecipients && (
+              <div style={{ marginTop: 8, border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', maxHeight: 260, overflowY: 'auto' }}>
+                <div style={{ display: 'flex', gap: 14, marginBottom: 8, fontSize: '0.8rem' }}>
+                  <button type="button" onClick={() => setExcludedIds(new Set())} style={{ background: 'none', border: 'none', color: '#2c5282', cursor: 'pointer', textDecoration: 'underline' }}>Select all</button>
+                  <button type="button" onClick={() => setExcludedIds(new Set(activeContacts.map(c => c.id)))} style={{ background: 'none', border: 'none', color: '#2c5282', cursor: 'pointer', textDecoration: 'underline' }}>Deselect all</button>
+                </div>
+                {activeContacts.map(c => {
+                  const included = !excludedIds.has(c.id);
+                  return (
+                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={included}
+                        onChange={() => setExcludedIds(prev => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
+                      />
+                      <span style={{ color: included ? '#2d3748' : '#a0aec0' }}>
+                        {c.name} <span style={{ color: '#a0aec0', fontSize: '0.8rem' }}>{fmtPhoneDisplay(c.phone)}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <button
             className="save-btn"
-            disabled={broadcastSending || !broadcastMsg.trim() || activeContacts.length === 0}
+            disabled={broadcastSending || !broadcastMsg.trim() || selectedCount === 0}
             onClick={handleSendBroadcast}
           >
-            {broadcastSending ? 'Sending…' : `Send to ${activeContacts.length} active`}
+            {broadcastSending ? 'Sending…' : `Send to ${selectedCount}${excludedIds.size > 0 ? ` of ${activeContacts.length}` : ' active'}`}
           </button>
 
           {broadcastResult && broadcastResult.results?.some(r => r.status === 'failed') && (

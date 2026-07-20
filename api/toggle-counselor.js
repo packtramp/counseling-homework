@@ -91,6 +91,7 @@ export default async function handler(req, res) {
     // Service used for reminders. Writes a per-send history record under the group.
     if (action === 'sendBroadcast') {
       const { groupId } = req.body;
+      const excludeIds = Array.isArray(req.body.excludeIds) ? req.body.excludeIds : [];
       const message = (req.body.message || '').trim();
       if (!groupId) return res.status(400).json({ error: 'groupId required' });
       if (!message) return res.status(400).json({ error: 'Message required' });
@@ -113,9 +114,9 @@ export default async function handler(req, res) {
       const contactsSnap = await db.collection(`broadcastGroups/${groupId}/contacts`).get();
       const contacts = contactsSnap.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(c => c.active !== false && c.optOut !== true && c.phone);
+        .filter(c => c.active !== false && c.optOut !== true && c.phone && !excludeIds.includes(c.id));
       if (contacts.length === 0) {
-        return res.status(400).json({ error: 'No active contacts to send to' });
+        return res.status(400).json({ error: 'No recipients to send to' });
       }
 
       const results = [];
@@ -156,6 +157,7 @@ export default async function handler(req, res) {
           sentByUid: decodedToken.uid,
           sentByName: senderName,
           recipientCount: results.length,
+          excludedCount: excludeIds.length,
           sentCount,
           failCount,
           results
