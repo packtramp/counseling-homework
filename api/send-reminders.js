@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import crypto from 'crypto';
 import { zonedParts, zonedTodayStr, safeTz, DAY_ROLLOVER_HOUR } from './_lib/tz.js';
 import { runDailyChores } from './_lib/dailyChores.js';
 
@@ -65,16 +66,16 @@ export default async function handler(req, res) {
   }
 
   // Admin: point the Twilio Messaging Service inbound webhook at our reply forwarder.
-  // Runs on Vercel where the Twilio creds live. One-time (or after a URL change).
+  // Runs on Vercel where the Twilio creds live. Requests are authenticated by Twilio's
+  // X-Twilio-Signature (no URL secret). One-time (or after the URL changes).
   if (req.query?.configureSmsWebhook) {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const msgSvcSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
-    const webhookSecret = process.env.SMS_WEBHOOK_SECRET;
-    if (!accountSid || !authToken || !msgSvcSid || !webhookSecret) {
-      return res.status(500).json({ error: 'Missing Twilio creds or SMS_WEBHOOK_SECRET' });
+    if (!accountSid || !authToken || !msgSvcSid) {
+      return res.status(500).json({ error: 'Missing Twilio creds' });
     }
-    const inboundUrl = `https://counselinghomework.com/api/partner-response?sms=${webhookSecret}`;
+    const inboundUrl = `https://counselinghomework.com/api/partner-response?sms=1`;
     const resp = await fetch(`https://messaging.twilio.com/v1/Services/${msgSvcSid}`, {
       method: 'POST',
       headers: {
@@ -86,10 +87,29 @@ export default async function handler(req, res) {
     const data = await resp.json();
     return res.status(resp.ok ? 200 : 500).json({
       ok: resp.ok,
-      configuredInboundUrl: `https://counselinghomework.com/api/partner-response?sms=***`,
-      twilioInboundRequestUrl: data.inbound_request_url ? data.inbound_request_url.replace(/sms=[^&]+/, 'sms=***') : undefined,
+      configuredInboundUrl: inboundUrl,
+      twilioInboundRequestUrl: data.inbound_request_url,
       twilioError: resp.ok ? undefined : data
     });
+  }
+
+  // Admin: self-test the inbound reply path end-to-end. Computes a valid Twilio signature
+  // server-side (where the auth token lives) and POSTs a fake reply to the live receiver,
+  // which forwards a test email. Proves signature validation + forwarding without a phone.
+  if (req.query?.testSmsReply) {
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    if (!authToken) return res.status(500).json({ error: 'Missing TWILIO_AUTH_TOKEN' });
+    const url = 'https://counselinghomework.com/api/partner-response?sms=1';
+    const params = { Body: 'Self-test reply — please ignore (dont add me test)', From: '+12565550000', MessageSid: 'SMselftest0000' };
+    const data = Object.keys(params).sort().reduce((acc, k) => acc + k + params[k], url);
+    const sig = crypto.createHmac('sha1', authToken).update(Buffer.from(data, 'utf-8')).digest('base64');
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': sig },
+      body: new URLSearchParams(params)
+    });
+    const text = await resp.text();
+    return res.status(200).json({ receiverStatus: resp.status, receiverBody: text.slice(0, 160) });
   }
 
   // Admin tools

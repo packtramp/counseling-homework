@@ -1,4 +1,15 @@
 import admin from 'firebase-admin';
+import crypto from 'crypto';
+
+// Validate Twilio's X-Twilio-Signature: base64(HMAC-SHA1(authToken, url + sorted param concat)).
+function validTwilioSignature(authToken, url, params, signature) {
+  if (!authToken || !signature) return false;
+  const data = Object.keys(params).sort().reduce((acc, k) => acc + k + params[k], url);
+  const expected = crypto.createHmac('sha1', authToken).update(Buffer.from(data, 'utf-8')).digest('base64');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signature);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 // Initialize Firebase Admin if not already done
 if (!admin.apps.length) {
@@ -142,7 +153,13 @@ async function handleSmsReply(req, res) {
     return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><Response>${extra}</Response>`);
   };
 
-  if (!process.env.SMS_WEBHOOK_SECRET || req.query.sms !== process.env.SMS_WEBHOOK_SECRET) {
+  // Verify the request is genuinely from Twilio (X-Twilio-Signature over the configured URL).
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const reqUrl = `${proto}://${host}${req.url}`;
+  const signature = req.headers['x-twilio-signature'];
+  if (!validTwilioSignature(process.env.TWILIO_AUTH_TOKEN, reqUrl, req.body || {}, signature)) {
+    console.error('SMS reply: bad Twilio signature for', reqUrl);
     return res.status(403).send('Forbidden');
   }
 
