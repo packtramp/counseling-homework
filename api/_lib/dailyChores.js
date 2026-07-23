@@ -1,5 +1,6 @@
 import admin from 'firebase-admin';
 import { zonedParts, zonedTodayStr } from './tz.js';
+import { planDayTopUp } from './vacationTopUp.js';
 
 // The once-a-day housekeeping the app needs: retire finished one-time homework, expire timed
 // items, auto-complete homework for people on vacation. This used to live in the Vercel daily
@@ -51,20 +52,25 @@ export async function runDailyChores(now = new Date()) {
       const hw = hwDoc.data();
       if (['cancelled', 'expired', 'completed'].includes(hw.status)) continue;
       const comps = hw.completions || [];
-      const doneOn = (mid) => comps.some((c) => { const d = new Date((c.toDate ? c.toDate() : new Date(c)).toLocaleString('en-US', { timeZone: 'America/Chicago' })); d.setHours(0,0,0,0); return d.getTime() === mid.getTime(); });
-      const yDone = doneOn(yesterdayMidnight), tDone = doneOn(todayMidnight);
-      const updates = {}, dateStrs = [];
-      if (!yDone && yesterdayMidnight.getTime() >= new Date(vs.toLocaleString('en-US', { timeZone: 'America/Chicago' })).setHours(0,0,0,0)) {
-        updates.completions = admin.firestore.FieldValue.arrayUnion(yesterdayTimestamp); dateStrs.push(yesterdayDateStr);
+      const countOn = (mid) => comps.filter((c) => { const d = new Date((c.toDate ? c.toDate() : new Date(c)).toLocaleString('en-US', { timeZone: 'America/Chicago' })); d.setHours(0,0,0,0); return d.getTime() === mid.getTime(); }).length;
+      // Top each vacation day up to the item's FULL daily cap (planDayTopUp) —
+      // one-per-day left capped Think Lists mathematically behind after vacation.
+      // Days with partial real work get topped up but NOT stamped as auto (a
+      // stamped day erases the streak credit the user's real work earned).
+      const addMs = [], dateStrs = [];
+      if (yesterdayMidnight.getTime() >= new Date(vs.toLocaleString('en-US', { timeZone: 'America/Chicago' })).setHours(0,0,0,0)) {
+        const y = planDayTopUp(hw, countOn(yesterdayMidnight), yesterdayTimestamp.toMillis());
+        addMs.push(...y.addMs);
+        if (y.stampAuto) dateStrs.push(yesterdayDateStr);
       }
-      if (!tDone) {
-        updates.completions = admin.firestore.FieldValue.arrayUnion(...(dateStrs.length ? [yesterdayTimestamp, admin.firestore.Timestamp.now()] : [admin.firestore.Timestamp.now()]));
-        dateStrs.push(todayDateStr);
-      }
-      if (dateStrs.length) {
-        updates.autoCompletedDates = admin.firestore.FieldValue.arrayUnion(...dateStrs);
+      const t = planDayTopUp(hw, countOn(todayMidnight), now.getTime());
+      addMs.push(...t.addMs);
+      if (t.stampAuto) dateStrs.push(todayDateStr);
+      if (addMs.length) {
+        const updates = { completions: admin.firestore.FieldValue.arrayUnion(...addMs.map((ms) => admin.firestore.Timestamp.fromMillis(ms))) };
+        if (dateStrs.length) updates.autoCompletedDates = admin.firestore.FieldValue.arrayUnion(...dateStrs);
         await db.doc(`${hwPath}/${hwDoc.id}`).update(updates);
-        titles.push(hw.title || hwDoc.id); vacationItems += dateStrs.length;
+        titles.push(hw.title || hwDoc.id); vacationItems += addMs.length;
       }
     }
     if (titles.length) {
