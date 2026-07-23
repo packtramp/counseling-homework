@@ -11,7 +11,9 @@ import {
   dayBucket,
   DAY_ROLLOVER_HOUR,
   calculateAPStreak,
-  calculateTotalDays
+  calculateTotalDays,
+  getAssignedDate,
+  calculateAccountabilityStatus
 } from './homeworkHelpers';
 
 // Helper to create a date at a specific time
@@ -415,5 +417,54 @@ describe('formatTimeDisplay', () => {
 
   it('returns original for invalid format', () => {
     expect(formatTimeDisplay('invalid')).toBe('invalid');
+  });
+});
+
+// Regression tests for the 2026-07-23 Garrett Lovik bug: Heart Journal items
+// wrote `assignedAt` (not `assignedDate`), so screens disagreed — red tile,
+// zero behind-count, all-green calendar. All date resolution now goes through
+// getAssignedDate, and every calculation must agree on the same start date.
+describe('getAssignedDate — single source of truth for start dates', () => {
+  const jul5 = makeDate(2026, 7, 5);
+
+  it('reads assignedDate (Timestamp)', () => {
+    expect(getAssignedDate({ assignedDate: { toDate: () => jul5 } })).toEqual(makeDate(2026, 7, 5, 0));
+  });
+
+  it('falls back to assignedAt when assignedDate is missing (Heart Journal legacy)', () => {
+    expect(getAssignedDate({ assignedAt: { toDate: () => jul5 } })).toEqual(makeDate(2026, 7, 5, 0));
+  });
+
+  it('prefers assignedDate over assignedAt when both exist', () => {
+    const jul10 = makeDate(2026, 7, 10);
+    expect(getAssignedDate({ assignedDate: { toDate: () => jul10 }, assignedAt: { toDate: () => jul5 } }))
+      .toEqual(makeDate(2026, 7, 10, 0));
+  });
+
+  it('returns null when no date exists at all', () => {
+    expect(getAssignedDate({})).toBeNull();
+    expect(getAssignedDate(null)).toBeNull();
+  });
+
+  it('assignedAt-only item judged IDENTICALLY by isItemBehind and the tile color', () => {
+    // The Garrett scenario: assignedAt Jul 5, target 7/wk, current week Jul 19-25,
+    // only 2 completions (Jul 21, 22), evaluated Jul 23 -> 2 done + 3 left = 5 < 7.
+    const item = {
+      status: 'active',
+      weeklyTarget: 7,
+      assignedAt: { toDate: () => jul5 },
+      completions: [makeCompletion(makeDate(2026, 7, 21)), makeCompletion(makeDate(2026, 7, 22))]
+    };
+    const now = makeDate(2026, 7, 23);
+    // Before the fix: tile said behind (used assignedAt), count said fine (defaulted to today).
+    expect(isItemBehind(item, now)).toBe(true);
+    expect(calculateAccountabilityStatus([item], null)).toBe('red');
+  });
+
+  it('item with no date at all is never "behind" anywhere', () => {
+    const item = { status: 'active', weeklyTarget: 7, completions: [] };
+    expect(isItemBehind(item, makeDate(2026, 7, 23))).toBe(false);
+    // Dateless item can't be judged -> tile shows gray ('idle'), never red
+    expect(calculateAccountabilityStatus([item], null)).toBe('idle');
   });
 });

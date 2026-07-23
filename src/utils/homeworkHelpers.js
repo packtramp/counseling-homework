@@ -50,6 +50,41 @@ export const STREAK_RULES_START = new Date(2026, 5, 26); // 2026-06-26, local mi
 const daysBetween = (from, to) => Math.round((to - from) / (24 * 60 * 60 * 1000));
 
 /**
+ * Resolve a homework item's start date. SINGLE SOURCE OF TRUTH — every
+ * behind/streak/calendar calculation must use this.
+ *
+ * Why this exists: creation paths disagreed on the field name. Five of six wrote
+ * `assignedDate`; Heart Journal "commit to pray" wrote only `assignedAt`. Each
+ * calculation then invented its own fallback — one read `assignedAt`, one
+ * defaulted to today, one skipped the item — so the SAME item could be "behind"
+ * on the tile, "fine" in the behind-count, and invisible on the calendar.
+ * (Garrett Lovik, 2026-07-23: red tile, no count, all-green calendar.)
+ *
+ * @param {Object} item - Homework item
+ * @returns {Date|null} Midnight-normalized start date, or null if the item has none
+ */
+export const getAssignedDate = (item) => {
+  if (!item) return null;
+  let raw = null;
+  if (item.assignedDate?.toDate) raw = item.assignedDate.toDate();
+  else if (item.assignedDate) raw = new Date(item.assignedDate);
+  else if (item.assignedAt?.toDate) raw = item.assignedAt.toDate();
+  else if (item.assignedAt) raw = new Date(item.assignedAt);
+  if (!raw || isNaN(raw.getTime())) return null;
+  return toMidnight(raw);
+};
+
+/**
+ * Whether an item counts toward behind/color/calendar math.
+ * Retired items (cancelled/expired/completed) never count.
+ * In practice homework status is only ever active/cancelled/expired/completed,
+ * so this is equivalent to `status === 'active'` (which calculateAPStreak still
+ * uses) — but new statuses should be added HERE, not per-function.
+ */
+export const isCountableItem = (item) =>
+  !!item && item.status !== 'cancelled' && item.status !== 'expired' && item.status !== 'completed';
+
+/**
  * Check if a user is currently on vacation.
  * @param {Object} profile - User profile with optional vacationStart/vacationEnd
  * @returns {boolean} True if currently on vacation
@@ -128,15 +163,8 @@ export const getWeeklyProgress = (item, now = new Date()) => {
   const weeklyTarget = item.weeklyTarget || 7;
   const dailyCap = item.dailyCap || 999;
 
-  let rawAssigned;
-  if (item.assignedDate?.toDate) {
-    rawAssigned = item.assignedDate.toDate();
-  } else if (item.assignedDate) {
-    rawAssigned = new Date(item.assignedDate);
-  } else {
-    rawAssigned = now;
-  }
-  const assignedDate = toMidnight(rawAssigned);
+  // Falls back to today only when the item genuinely has no start date at all.
+  const assignedDate = getAssignedDate(item) || dayBucket(now);
   const today = dayBucket(now);
 
   // Use daysBetween for DST-safe week calculation
@@ -176,22 +204,15 @@ export const getWeeklyProgress = (item, now = new Date()) => {
  * @returns {boolean} True if behind
  */
 export const isItemBehind = (item, now = new Date(), profile) => {
-  if (item.status === 'cancelled' || item.status === 'expired' || item.status === 'completed') return false;
+  if (!isCountableItem(item)) return false;
   if (isOnVacation(profile)) return false;
 
   const completions = item.completions || [];
   const weeklyTarget = item.weeklyTarget || 7;
   const dailyCap = item.dailyCap || 999;
 
-  let rawAssigned;
-  if (item.assignedDate?.toDate) {
-    rawAssigned = item.assignedDate.toDate();
-  } else if (item.assignedDate) {
-    rawAssigned = new Date(item.assignedDate);
-  } else {
-    rawAssigned = now;
-  }
-  const assignedDate = toMidnight(rawAssigned);
+  const assignedDate = getAssignedDate(item);
+  if (!assignedDate) return false; // no start date -> no week to be behind in
   const today = dayBucket(now);
 
   // Use daysBetween for DST-safe week calculation
@@ -241,7 +262,7 @@ export const isItemBehind = (item, now = new Date(), profile) => {
  * @returns {boolean} True if skipping today means can't catch up
  */
 export const isRequiredToday = (item, now = new Date()) => {
-  if (item.status === 'cancelled' || item.status === 'expired' || item.status === 'completed') return false;
+  if (!isCountableItem(item)) return false;
   if (isItemBehind(item, now)) return false;
   if (isCompletedToday(item, now)) return false;
 
@@ -249,15 +270,8 @@ export const isRequiredToday = (item, now = new Date()) => {
   const weeklyTarget = item.weeklyTarget || 7;
   const dailyCap = item.dailyCap || 999;
 
-  let rawAssigned;
-  if (item.assignedDate?.toDate) {
-    rawAssigned = item.assignedDate.toDate();
-  } else if (item.assignedDate) {
-    rawAssigned = new Date(item.assignedDate);
-  } else {
-    rawAssigned = now;
-  }
-  const assignedDate = toMidnight(rawAssigned);
+  // Falls back to today only when the item genuinely has no start date at all.
+  const assignedDate = getAssignedDate(item) || dayBucket(now);
   const today = dayBucket(now);
 
   // Use daysBetween for DST-safe week calculation
@@ -370,7 +384,7 @@ export const calculateAccountabilityStatus = (homework, profile) => {
   const now = new Date();
   const today = dayBucket(now);
 
-  const activeHomework = homework.filter(h => h.status === 'active');
+  const activeHomework = homework.filter(isCountableItem);
   if (activeHomework.length === 0) return 'neutral';
 
   let cantCatchUp = false;
@@ -382,20 +396,8 @@ export const calculateAccountabilityStatus = (homework, profile) => {
     const dailyCap = hw.dailyCap || 999;
     const completions = hw.completions || [];
 
-    // Get assignedDate (same logic as HomeworkTile), normalized to midnight
-    let rawAssigned;
-    if (hw.assignedDate?.toDate) {
-      rawAssigned = hw.assignedDate.toDate();
-    } else if (hw.assignedDate) {
-      rawAssigned = new Date(hw.assignedDate);
-    } else if (hw.assignedAt?.toDate) {
-      rawAssigned = hw.assignedAt.toDate();
-    } else if (hw.assignedAt) {
-      rawAssigned = new Date(hw.assignedAt);
-    } else {
-      rawAssigned = new Date();
-    }
-    const assignedDate = toMidnight(rawAssigned);
+    const assignedDate = getAssignedDate(hw);
+    if (!assignedDate) continue; // no start date -> no week to judge
 
     // DST-safe week calculation
     const totalDays = daysBetween(assignedDate, today);
@@ -468,12 +470,10 @@ export const getDayStatus = (homework, targetDate) => {
   const target = toMidnight(targetDate);
 
   const activeOnDate = homework.filter(h => {
-    if (h.status === 'cancelled' || h.status === 'expired' || h.status === 'completed') return false;
-    let assignedDate;
-    if (h.assignedDate?.toDate) assignedDate = h.assignedDate.toDate();
-    else if (h.assignedDate) assignedDate = new Date(h.assignedDate);
-    else return false;
-    return target >= toMidnight(assignedDate);
+    if (!isCountableItem(h)) return false;
+    const assignedDate = getAssignedDate(h);
+    if (!assignedDate) return false;
+    return target >= assignedDate;
   });
 
   if (activeOnDate.length === 0) return 'gray';
@@ -486,12 +486,9 @@ export const getDayStatus = (homework, targetDate) => {
     const dailyCap = hw.dailyCap || 999;
     const maxPerDay = dailyCap < 999 ? dailyCap : 1;
 
-    let rawAssigned;
-    if (hw.assignedDate?.toDate) rawAssigned = hw.assignedDate.toDate();
-    else if (hw.assignedDate) rawAssigned = new Date(hw.assignedDate);
-    else continue;
+    const assigned = getAssignedDate(hw);
+    if (!assigned) continue;
 
-    const assigned = toMidnight(rawAssigned);
     // DST-safe week calculation
     const totalDays = daysBetween(assigned, target);
     const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
@@ -547,12 +544,10 @@ export const getDayDetails = (homework, targetDate) => {
   const target = toMidnight(targetDate);
 
   const activeOnDate = homework.filter(h => {
-    if (h.status === 'cancelled' || h.status === 'expired' || h.status === 'completed') return false;
-    let rawAssigned;
-    if (h.assignedDate?.toDate) rawAssigned = h.assignedDate.toDate();
-    else if (h.assignedDate) rawAssigned = new Date(h.assignedDate);
-    else return false;
-    return target >= toMidnight(rawAssigned);
+    if (!isCountableItem(h)) return false;
+    const assignedDate = getAssignedDate(h);
+    if (!assignedDate) return false;
+    return target >= assignedDate;
   });
 
   if (activeOnDate.length === 0) return { status: 'gray', behindItems: [] };
@@ -565,12 +560,9 @@ export const getDayDetails = (homework, targetDate) => {
     const dailyCap = hw.dailyCap || 999;
     const maxPerDay = dailyCap < 999 ? dailyCap : 1;
 
-    let rawAssigned;
-    if (hw.assignedDate?.toDate) rawAssigned = hw.assignedDate.toDate();
-    else if (hw.assignedDate) rawAssigned = new Date(hw.assignedDate);
-    else continue;
+    const assigned = getAssignedDate(hw);
+    if (!assigned) continue;
 
-    const assigned = toMidnight(rawAssigned);
     // DST-safe week calculation
     const totalDays = daysBetween(assigned, target);
     const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
@@ -651,13 +643,8 @@ export const calculateAPStreak = (homework, profile, now = new Date()) => {
       const dailyCap = hw.dailyCap || 999;
       const maxPerDay = dailyCap < 999 ? dailyCap : 1;
 
-      let rawAssigned;
-      if (hw.assignedDate?.toDate) rawAssigned = hw.assignedDate.toDate();
-      else if (hw.assignedDate) rawAssigned = new Date(hw.assignedDate);
-      else continue; // no assigned date, skip
-
-      // Normalize assignedDate to midnight
-      const assigned = toMidnight(rawAssigned);
+      const assigned = getAssignedDate(hw);
+      if (!assigned) continue; // no assigned date, skip
 
       // Don't check days before assignment
       if (checkDate < assigned) continue;
@@ -713,11 +700,8 @@ export const calculateAPStreak = (homework, profile, now = new Date()) => {
       const dailyCap = hw.dailyCap || 999;
       const maxPerDay = dailyCap < 999 ? dailyCap : 1;
 
-      let rawAssigned;
-      if (hw.assignedDate?.toDate) rawAssigned = hw.assignedDate.toDate();
-      else if (hw.assignedDate) rawAssigned = new Date(hw.assignedDate);
-      else continue;
-      const assigned = toMidnight(rawAssigned);
+      const assigned = getAssignedDate(hw);
+      if (!assigned) continue;
       if (checkDate < assigned) continue;
 
       const daysSinceAssigned = Math.round((checkDate - assigned) / msPerDay);

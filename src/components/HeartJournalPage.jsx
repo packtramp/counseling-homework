@@ -269,14 +269,19 @@ export default function HeartJournalPage({ userProfile, onClose, onSaved, editin
           await addDoc(collection(db, `${basePath}/homework`), {
             title: `Pray daily about...${situationPreview}`,
             description: 'From Heart Journal commitment',
-            frequency: 7,
-            daysPerWeek: 7,
-            repeating: false,
+            // weeklyTarget / assignedDate / recurring are the field names the rest
+            // of the app actually reads. This path used to write `assignedAt`,
+            // `repeating`, and no target — so the item had no findable start date
+            // (each screen guessed differently: red tile, empty behind-count,
+            // missing from calendar), silently demanded 7/7 days, and the nightly
+            // retire cron never saw it, so a "1 week" commitment ran forever.
+            weeklyTarget: 6,          // pray 6 of 7 days — one day of grace
+            recurring: false,         // one week only; nightly cron retires it
             status: 'active',
             source: 'heart-journal',
             sourceJournalId: currentJournalId,
             createdAt: serverTimestamp(),
-            assignedAt: serverTimestamp()
+            assignedDate: serverTimestamp()
           });
         }
       }
