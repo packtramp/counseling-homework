@@ -1,0 +1,12 @@
+#!/bin/sh
+# Pre-push gate: full test suite must pass before ANY push (which auto-deploys).
+# Installed per machine: cp hooks/pre-push .git/hooks/pre-push
+echo "[pre-push] Running full test suite before push (push auto-deploys prod)..."
+npx vitest run --silent 2>&1 | tail -5
+code=$?
+if [ $code -ne 0 ]; then
+  echo "[pre-push] TESTS FAILED - push blocked. Fix tests or the code, then push again."
+  exit 1
+fi
+echo "[pre-push] All tests green - push allowed."
+exit 0
