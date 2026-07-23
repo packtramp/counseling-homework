@@ -1072,7 +1072,9 @@ textarea {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-right: 0.75rem;
+  /* No margin-right: rows space children with `gap`. A legacy 0.75rem margin
+     here made plain rows' titles start 12px right of thinklist/journal rows'
+     (their 32px indicators have no margin) — the "words don't line up" bug. */
 }
 
 .check-btn:hover:not(:disabled) {
