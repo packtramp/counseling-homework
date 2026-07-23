@@ -2,7 +2,7 @@
  * Joint Session Helpers
  *
  * Shared logic for spouse-linked joint sessions.
- * Used by both UnifiedDashboard and CounselorDashboard.
+ * Used by UnifiedDashboard.
  */
 
 /**

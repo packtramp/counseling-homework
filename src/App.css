@@ -1113,9 +1113,13 @@ textarea {
   flex-shrink: 0;
 }
 
-.homework-status-item.thinklist-item {
-  padding-left: 6px;
-}
+/* Homework rows for linked Think Lists / Journals use scoped classes
+   .hw-thinklist / .hw-journal (renamed 2026-07-23). The old names collided with
+   OTHER components' classes — `.journal-item` (JournalingTile rows: space-between
+   layout, tighter padding, hover margin-shift) hijacked homework-row layout, and
+   a 6px padding-left hack shoved thinklist rows out of column alignment. All
+   three leading circles are 32px border-box, so the base row styles align them
+   with no per-type overrides. */
 
 .homework-info {
   flex: 1;

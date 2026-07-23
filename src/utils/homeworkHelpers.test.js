@@ -13,7 +13,9 @@ import {
   calculateAPStreak,
   calculateTotalDays,
   getAssignedDate,
-  calculateAccountabilityStatus
+  calculateAccountabilityStatus,
+  isRequiredToday,
+  getDayDetails
 } from './homeworkHelpers';
 
 // Helper to create a date at a specific time
@@ -466,5 +468,176 @@ describe('getAssignedDate — single source of truth for start dates', () => {
     expect(isItemBehind(item, makeDate(2026, 7, 23))).toBe(false);
     // Dateless item can't be judged -> tile shows gray ('idle'), never red
     expect(calculateAccountabilityStatus([item], null)).toBe('idle');
+  });
+});
+
+// ── 2026-07-23 audit: direct coverage for the tile color matrix, "required
+// today" (yellow), and the calendar day details — none of these had tests.
+// NOTE: calculateAccountabilityStatus uses real `new Date()` internally, so
+// color-matrix tests build items anchored relative to today.
+describe('calculateAccountabilityStatus — color matrix', () => {
+  const daysAgo = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    d.setHours(12, 0, 0, 0);
+    return d;
+  };
+  const mkItem = (over = {}) => ({
+    status: 'active',
+    weeklyTarget: 7,
+    assignedDate: { toDate: () => daysAgo(over.ageDays ?? 14) },
+    completions: [],
+    ...over
+  });
+
+  it('neutral when no homework at all', () => {
+    expect(calculateAccountabilityStatus([], null)).toBe('neutral');
+    expect(calculateAccountabilityStatus(null, null)).toBe('neutral');
+  });
+
+  it('neutral when every item is retired', () => {
+    expect(calculateAccountabilityStatus([
+      mkItem({ status: 'completed' }), mkItem({ status: 'cancelled' }), mkItem({ status: 'expired' })
+    ], null)).toBe('neutral');
+  });
+
+  it('vacation overrides everything', () => {
+    const profile = {
+      vacationStart: { toDate: () => daysAgo(2) },
+      vacationEnd: { toDate: () => { const d = daysAgo(0); d.setDate(d.getDate() + 2); return d; } }
+    };
+    expect(calculateAccountabilityStatus([mkItem()], profile)).toBe('vacation');
+  });
+
+  it('green when done something today (relaxed target, no pressure)', () => {
+    const item = mkItem({ weeklyTarget: 1, completions: [{ toDate: () => new Date() }] });
+    expect(calculateAccountabilityStatus([item], null)).toBe('green');
+  });
+
+  it('red when the weekly target is mathematically unreachable', () => {
+    // 7/wk, day 6 of the week (assigned 13 days ago), zero completions:
+    // 1 day left, max 1 more -> 1 < 7 -> red
+    const item = mkItem({ ageDays: 13 });
+    expect(calculateAccountabilityStatus([item], null)).toBe('red');
+  });
+
+  it('warning when skipping today would make it unreachable', () => {
+    // 7/wk, day 0 of a fresh week (assigned 14 days ago), nothing done today:
+    // still reachable (7 left >= 7) but skipping today -> 6 < 7 -> warning
+    const item = mkItem({ ageDays: 14 });
+    expect(calculateAccountabilityStatus([item], null)).toBe('warning');
+  });
+
+  it('idle when nothing today but plenty of buffer', () => {
+    const item = mkItem({ ageDays: 14, weeklyTarget: 1 });
+    expect(calculateAccountabilityStatus([item], null)).toBe('idle');
+  });
+
+  it('red beats green: one blown item outweighs another completed today', () => {
+    const done = mkItem({ weeklyTarget: 1, completions: [{ toDate: () => new Date() }] });
+    const blown = mkItem({ ageDays: 13 }); // 7/wk with 1 day left, 0 done
+    expect(calculateAccountabilityStatus([done, blown], null)).toBe('red');
+  });
+});
+
+describe('isRequiredToday — the yellow state', () => {
+  const assigned = { toDate: () => makeDate(2026, 7, 1) }; // Wed Jul 1
+
+  it('true on the last possible day to stay alive', () => {
+    // 7/wk (week 2: Jul 8-14), nothing done, evaluated Jul 8 (day 0):
+    // skip today -> 6 remaining < 7 -> must act today
+    const item = { status: 'active', weeklyTarget: 7, assignedDate: assigned, completions: [] };
+    expect(isRequiredToday(item, makeDate(2026, 7, 8))).toBe(true);
+  });
+
+  it('false when there is still buffer', () => {
+    const item = { status: 'active', weeklyTarget: 3, assignedDate: assigned, completions: [] };
+    expect(isRequiredToday(item, makeDate(2026, 7, 8))).toBe(false);
+  });
+
+  it('false when already behind (red owns it, not yellow)', () => {
+    // 7/wk, day 3 of week 2 (Jul 11), 0 done: 4 left < 7 -> behind, not "required today"
+    const item = { status: 'active', weeklyTarget: 7, assignedDate: assigned, completions: [] };
+    expect(isItemBehind(item, makeDate(2026, 7, 11))).toBe(true);
+    expect(isRequiredToday(item, makeDate(2026, 7, 11))).toBe(false);
+  });
+
+  it('false when already completed today', () => {
+    const item = {
+      status: 'active', weeklyTarget: 7, assignedDate: assigned,
+      completions: [makeCompletion(makeDate(2026, 7, 8, 9, 0))]
+    };
+    expect(isRequiredToday(item, makeDate(2026, 7, 8))).toBe(false);
+  });
+
+  it('respects daily caps (Think List: 3/day toward 21/wk)', () => {
+    // Day 0 of week 2, cap 3: skip today -> 6 days * 3 = 18 < 21 -> required today
+    const item = { status: 'active', weeklyTarget: 21, dailyCap: 3, assignedDate: assigned, completions: [] };
+    expect(isRequiredToday(item, makeDate(2026, 7, 8))).toBe(true);
+  });
+});
+
+describe('getDayDetails — calendar day evaluation', () => {
+  const assigned = { toDate: () => makeDate(2026, 7, 1) };
+
+  it('gray before any homework was assigned', () => {
+    const item = { status: 'active', weeklyTarget: 7, assignedDate: assigned, completions: [] };
+    expect(getDayDetails([item], makeDate(2026, 6, 15)).status).toBe('gray');
+  });
+
+  it('green on a day with a completion (target still reachable)', () => {
+    const item = {
+      status: 'active', weeklyTarget: 1, assignedDate: assigned,
+      completions: [makeCompletion(makeDate(2026, 7, 2, 9, 0))]
+    };
+    const res = getDayDetails([item], makeDate(2026, 7, 2));
+    expect(res.status).toBe('green');
+    expect(res.behindItems).toHaveLength(0);
+  });
+
+  it('red once the week is unreachable, and names the item', () => {
+    // 7/wk, nothing all week: by day 3 (Jul 4), 4 left < 7 -> red
+    const item = { status: 'active', weeklyTarget: 7, assignedDate: assigned, completions: [], title: 'Daily Prayer' };
+    const res = getDayDetails([item], makeDate(2026, 7, 4));
+    expect(res.status).toBe('red');
+    expect(res.behindItems[0].title).toBe('Daily Prayer');
+  });
+
+  it('retired items are invisible to the calendar', () => {
+    const item = { status: 'completed', weeklyTarget: 7, assignedDate: assigned, completions: [] };
+    expect(getDayDetails([item], makeDate(2026, 7, 4)).status).toBe('gray');
+  });
+});
+
+describe('calculateTotalDays — lifetime days', () => {
+  it('counts distinct days, dedupes multiple same-day completions', () => {
+    const hw = [{
+      status: 'active',
+      completions: [
+        makeCompletion(makeDate(2026, 7, 1, 9, 0)),
+        makeCompletion(makeDate(2026, 7, 1, 20, 0)), // same day
+        makeCompletion(makeDate(2026, 7, 2, 9, 0))
+      ]
+    }];
+    expect(calculateTotalDays(hw)).toBe(2);
+  });
+
+  it('1am completion buckets to the previous day (3am rollover)', () => {
+    const hw = [{
+      status: 'active',
+      completions: [
+        makeCompletion(makeDate(2026, 7, 1, 22, 0)),
+        makeCompletion(makeDate(2026, 7, 2, 1, 0)) // 1am -> still Jul 1
+      ]
+    }];
+    expect(calculateTotalDays(hw)).toBe(1);
+  });
+
+  it('retired items still count — lifetime scope', () => {
+    const hw = [
+      { status: 'completed', completions: [makeCompletion(makeDate(2026, 7, 1, 9, 0))] },
+      { status: 'cancelled', completions: [makeCompletion(makeDate(2026, 7, 2, 9, 0))] }
+    ];
+    expect(calculateTotalDays(hw)).toBe(2);
   });
 });

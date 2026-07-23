@@ -126,17 +126,19 @@ export default function HelpPage() {
       <div style={sectionStyle}>
         <h2 style={h2Style}>Streaks</h2>
         <p style={pStyle}>
-          Streaks help you stay consistent. You'll see two types:
+          You'll see two numbers next to your name: <strong>streak</strong> and <strong>days</strong>. They measure different things.
         </p>
 
-        <h3 style={h3Style}>Day Streak</h3>
+        <h3 style={h3Style}>Streak (day streak)</h3>
         <p style={pStyle}>
-          The goal of the day streak is to track <strong>daily activity in God's Word</strong> — not necessarily completeness. It's about showing up each day, not being perfect. Your streak counts how many days you've done at least one thing. Rest days don't add to it, but they don't necessarily end it either.
+          The goal of the streak is to track <strong>daily activity in God's Word</strong> — not necessarily completeness. It's about showing up each day, not being perfect. Your streak counts how many days in a row you've kept showing up. Rest days don't add to it, but they don't necessarily end it either.
         </p>
         <ul style={ulStyle}>
           <li><strong>Check off at least 1 item</strong> — Your streak goes up by one</li>
           <li><strong>Skip a day, but still on track</strong> — If you take a day off but you still have enough days left in the week to meet all your targets, your streak <strong>holds</strong>. It doesn't go up, but it doesn't reset.</li>
-          <li><strong>Fall behind</strong> — If you miss enough that it becomes <strong>mathematically impossible</strong> to finish any homework item on time, your streak resets to zero</li>
+          <li><strong>Miss a week's target</strong> — On the day it becomes <strong>mathematically impossible</strong> for an item to hit its weekly target, your streak resets to zero. This happens <strong>once</strong> per missed week — the reset lands on the day the item became unreachable, and then your streak starts climbing again the very next day you do something. One blown item doesn't keep punishing you all week.</li>
+          <li><strong>"I forgot yesterday" heals it</strong> — If you actually did the work and just forgot to log it, backfilling yesterday recalculates everything, including your streak.</li>
+          <li><strong>Vacation freezes it</strong> — While vacation mode is on, your streak won't grow, but it won't reset either.</li>
         </ul>
         <p style={pStyle}>
           <strong>Example:</strong> You have a "5 times per week" item. By Thursday you've already done all 5. Friday and Saturday you rest — your streak holds (it doesn't go up, but it doesn't reset). On Sunday you check something off and it goes up again.
@@ -145,15 +147,15 @@ export default function HelpPage() {
           <strong>Overachievers:</strong> Already hit your weekly target? You can still check it off again for extra credit (6/5, 7/5, etc.) — and your streak will increase for that day.
         </p>
         <p style={pStyle}>
-          <strong>Important:</strong> Your day streak tracks whether you <em>showed up</em>, not whether every single item is on track. It's possible to have a growing streak while still being "behind" on a specific item — the streak rewards daily effort, while the behind status looks at each item individually.
+          <strong>Important:</strong> Your streak tracks whether you <em>showed up</em>, not whether every single item is on track. After a reset day has passed, it's possible to have a growing streak while an item still shows "behind" — the streak rewards daily effort, while the behind status looks at each item's week individually.
         </p>
 
-        <h3 style={h3Style}>Week Streak</h3>
+        <h3 style={h3Style}>Days (total days)</h3>
         <p style={pStyle}>
-          Your week streak counts <strong>consecutive weeks</strong> where you did at least one thing. Weeks run Sunday through Saturday. You only need <strong>one checkmark</strong> anywhere in the week for it to count. This is more forgiving than the day streak — even if you miss several days, your week streak stays alive as long as you do something each week.
+          Your <strong>days</strong> number is a lifetime count of every day you've completed at least one thing — across all your homework, past and present. It only goes up. It <strong>never resets</strong>, no matter what. Think of it as your total track record of showing up, even through hard seasons.
         </p>
         <p style={pStyle}>
-          <em>Note: Day and week streaks measure different things, so the numbers won't always match up. That's normal — day streaks count active days, week streaks count active weeks.</em>
+          <em>Note: streak and days measure different things, so the numbers won't always match up. That's normal — streak counts consecutive momentum, days counts lifetime faithfulness.</em>
         </p>
       </div>
 
@@ -189,14 +191,14 @@ export default function HelpPage() {
           <li><strong style={{ color: '#e53e3e' }}>Red — "Behind"</strong> — They've missed enough that they can't catch up this week even with max effort</li>
         </ul>
         <p style={pStyle}>
-          Each tile also shows two streak circles:
+          Each tile also shows two circles:
         </p>
         <ul style={ulStyle}>
-          <li><strong style={{ color: '#38a169' }}>Green circle</strong> — Their <strong>day streak</strong> (consecutive days with at least one completion)</li>
-          <li><strong style={{ color: '#2b6cb0' }}>Blue circle</strong> — Their <strong>week streak</strong> (consecutive weeks with at least one completion)</li>
+          <li><strong style={{ color: '#38a169' }}>Green circle ("streak")</strong> — Their <strong>day streak</strong> (consecutive days showing up; resets once on the day an item's week becomes unreachable, then climbs again)</li>
+          <li><strong style={{ color: '#2b6cb0' }}>Blue circle ("days")</strong> — Their <strong>total days</strong> (lifetime count of days with at least one completion — never resets)</li>
         </ul>
         <p style={pStyle}>
-          A gray circle with "0" means their streak has reset. See the <strong>Day Streak</strong> and <strong>Week Streak</strong> sections above for how streaks grow and reset.
+          A gray circle with "0" means their streak has reset. See the <strong>Streaks</strong> section above for how the streak and days numbers grow and reset.
         </p>
       </div>
 

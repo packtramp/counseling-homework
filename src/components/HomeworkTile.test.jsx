@@ -553,7 +553,7 @@ describe('HomeworkTile', () => {
       );
 
       // Think list items use the brain icon, click the container
-      const item = document.querySelector('.thinklist-item');
+      const item = document.querySelector('.hw-thinklist');
       fireEvent.click(item);
       expect(mockOnOpenThinkList).toHaveBeenCalledWith(thinkListHomework);
     });
@@ -568,7 +568,7 @@ describe('HomeworkTile', () => {
         />
       );
 
-      const item = document.querySelector('.thinklist-item');
+      const item = document.querySelector('.hw-thinklist');
       fireEvent.click(item);
       expect(mockOnOpenThinkList).toHaveBeenCalledWith(thinkListHomework);
     });
@@ -583,7 +583,7 @@ describe('HomeworkTile', () => {
         />
       );
 
-      const item = document.querySelector('.thinklist-item');
+      const item = document.querySelector('.hw-thinklist');
       fireEvent.click(item);
       expect(mockOnOpenThinkList).toHaveBeenCalled();
       expect(screen.queryByText('Save')).not.toBeInTheDocument();

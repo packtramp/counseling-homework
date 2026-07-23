@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import RichTextEditor from './RichTextEditor';
-import { getCompletionsForDay, isCompletedToday, getTodayProgress, getWeeklyProgress, isItemBehind, isRequiredToday, dayBucket } from '../utils/homeworkHelpers';
+import { getCompletionsForDay, isCompletedToday, getTodayProgress, getWeeklyProgress, isItemBehind, isRequiredToday, dayBucket, getAssignedDate } from '../utils/homeworkHelpers';
 
 const hasYesterdayCompletion = (item) => {
   const y = new Date();
@@ -74,21 +74,17 @@ export default function HomeworkTile({
 
   // Helper: Get current weekly period end date
   const getPeriodEndDate = (item) => {
-    let assignedDate;
-    if (item.assignedDate?.toDate) {
-      assignedDate = item.assignedDate.toDate();
-    } else if (item.assignedDate) {
-      assignedDate = new Date(item.assignedDate);
-    } else {
-      return null;
-    }
-    const now = new Date();
+    // getAssignedDate: shared start-date resolution (midnight-normalized).
+    // Day-count + calendar-day arithmetic instead of raw ms/week division —
+    // the old version drifted across DST and flipped weeks at time-of-assignment
+    // rather than midnight (same bug family fixed in getStreakInfo on 5/3).
+    const assignedDate = getAssignedDate(item);
+    if (!assignedDate) return null;
+    const today = dayBucket(new Date());
     const msPerDay = 24 * 60 * 60 * 1000;
-    const msPerWeek = 7 * msPerDay;
-    const weeksSinceAssigned = Math.max(0, Math.floor((now - assignedDate) / msPerWeek));
-    const weekStartMs = assignedDate.getTime() + (weeksSinceAssigned * msPerWeek);
-    const periodEnd = new Date(weekStartMs + 6 * msPerDay);
-    return periodEnd;
+    const totalDays = Math.max(0, Math.round((today - assignedDate) / msPerDay));
+    const weeksSinceAssigned = Math.floor(totalDays / 7);
+    return new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + weeksSinceAssigned * 7 + 6);
   };
 
   // Helper: Get total weeks accomplished out of total elapsed weeks
@@ -96,31 +92,30 @@ export default function HomeworkTile({
     const completions = item.completions || [];
     const weeklyTarget = item.weeklyTarget || 7;
     const dailyCap = item.dailyCap || 999;
-    let assignedDate;
-    if (item.assignedDate?.toDate) {
-      assignedDate = item.assignedDate.toDate();
-    } else if (item.assignedDate) {
-      assignedDate = new Date(item.assignedDate);
-    } else {
-      return null;
-    }
-    const now = new Date();
-    const totalDays = Math.round((now - assignedDate) / (24 * 60 * 60 * 1000));
+    // Shared start-date resolution + midnight/dayBucket math (same migration as
+    // getStreakInfo 5/3 and getPeriodEndDate 7/23) — the old version used raw
+    // time-of-day dates, so late-night completions bucketed to the wrong day and
+    // week boundaries drifted from every other calculation.
+    const assignedDate = getAssignedDate(item);
+    if (!assignedDate) return null;
+    const today = dayBucket(new Date());
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const totalDays = Math.max(0, Math.round((today - assignedDate) / msPerDay));
     const totalWeeks = Math.floor(totalDays / 7);
     // Include current (in-progress) week in count
     const totalPeriodsIncludingCurrent = totalWeeks + 1;
     let completed = 0;
     for (let w = 0; w < totalWeeks; w++) {
-      const weekStart = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + w * 7);
-      const weekEnd = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + (w + 1) * 7);
+      const weekStartMs = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + w * 7).getTime();
+      const weekEndMs = new Date(assignedDate.getFullYear(), assignedDate.getMonth(), assignedDate.getDate() + (w + 1) * 7).getTime();
       const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
       const effectiveTarget = w === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
       const dailyBuckets = {};
       for (const c of completions) {
         const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-        if (cDate >= weekStart && cDate < weekEnd) {
-          const dayKey = cDate.toDateString();
-          dailyBuckets[dayKey] = (dailyBuckets[dayKey] || 0) + 1;
+        const cMs = dayBucket(cDate).getTime();
+        if (cMs >= weekStartMs && cMs < weekEndMs) {
+          dailyBuckets[cMs] = (dailyBuckets[cMs] || 0) + 1;
         }
       }
       let weeklyCompleted = 0;
@@ -509,7 +504,7 @@ export default function HomeworkTile({
                   const isLinkedItem = isThinkList || isJournal;
                   const handleLinkedClick = isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : isJournal && onOpenJournal ? () => onOpenJournal(item) : undefined;
                   return (
-                    <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'thinklist-item' : ''} ${isJournal ? 'journal-item' : ''}`}
+                    <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'hw-thinklist' : ''} ${isJournal ? 'hw-journal' : ''}`}
                       onClick={handleLinkedClick}
                       style={handleLinkedClick ? { cursor: 'pointer' } : undefined}
                     >
@@ -574,7 +569,7 @@ export default function HomeworkTile({
                 const isLinkedItem = isThinkList || isJournal;
                 const handleLinkedClick = isThinkList && onOpenThinkList ? () => onOpenThinkList(item) : isJournal && onOpenJournal ? () => onOpenJournal(item) : undefined;
                 return (
-                  <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'thinklist-item' : ''} ${isJournal ? 'journal-item' : ''}`}
+                  <div key={item.id} className={`homework-status-item ${doneToday ? 'done-today' : ''} ${isBehind ? 'behind' : ''} ${requiredToday ? 'required-today' : ''} ${isThinkList ? 'hw-thinklist' : ''} ${isJournal ? 'hw-journal' : ''}`}
                     onClick={handleLinkedClick}
                     style={handleLinkedClick ? { cursor: 'pointer' } : undefined}
                   >

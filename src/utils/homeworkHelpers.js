@@ -458,82 +458,9 @@ export const calculateAccountabilityStatus = (homework, profile) => {
 };
 
 /**
- * Get the status color for a specific historical date across all homework items.
- * Uses the same behind-check math as isItemBehind / calculateAPStreak.
- * @param {Array} homework - Array of homework items
- * @param {Date} targetDate - The date to evaluate (midnight-normalized)
- * @returns {'green'|'red'|'gray'} Day status
- */
-export const getDayStatus = (homework, targetDate) => {
-  if (!homework || homework.length === 0) return 'gray';
-
-  const target = toMidnight(targetDate);
-
-  const activeOnDate = homework.filter(h => {
-    if (!isCountableItem(h)) return false;
-    const assignedDate = getAssignedDate(h);
-    if (!assignedDate) return false;
-    return target >= assignedDate;
-  });
-
-  if (activeOnDate.length === 0) return 'gray';
-
-  let anyBehind = false;
-  let anyCompletions = false;
-
-  for (const hw of activeOnDate) {
-    const weeklyTarget = hw.weeklyTarget || 7;
-    const dailyCap = hw.dailyCap || 999;
-    const maxPerDay = dailyCap < 999 ? dailyCap : 1;
-
-    const assigned = getAssignedDate(hw);
-    if (!assigned) continue;
-
-    // DST-safe week calculation
-    const totalDays = daysBetween(assigned, target);
-    const weeksSinceAssigned = Math.max(0, Math.floor(totalDays / 7));
-    const dayOfWeek = totalDays % 7;
-    // Week start as a proper date (DST-safe)
-    const weekStartDate = new Date(assigned.getFullYear(), assigned.getMonth(), assigned.getDate() + weeksSinceAssigned * 7);
-
-    // Count completions this homework-week up to and including targetDate
-    const dailyCounts = {};
-    for (const c of (hw.completions || [])) {
-      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      const cDay = dayBucket(cDate);
-      if (cDay >= weekStartDate && cDay <= target) {
-        const dayKey = cDay.getTime();
-        dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
-      }
-      // Check if any completion on the target date itself
-      if (cDay.getTime() === target.getTime()) anyCompletions = true;
-    }
-
-    let weekCompletions = 0;
-    for (const count of Object.values(dailyCounts)) {
-      weekCompletions += Math.min(count, dailyCap);
-    }
-
-    // Days remaining in week from this day forward (including this day)
-    const daysRemaining = 7 - dayOfWeek;
-    const maxPossibleRemaining = daysRemaining * maxPerDay;
-
-    // Week 1 pro-rate
-    const maxFirstWeekCap = dailyCap < 999 ? 6 * dailyCap : 6;
-    const effectiveTarget = weeksSinceAssigned === 0 ? Math.min(weeklyTarget, maxFirstWeekCap) : weeklyTarget;
-
-    if ((weekCompletions + maxPossibleRemaining) < effectiveTarget) {
-      anyBehind = true;
-    }
-  }
-
-  if (anyBehind) return 'red';
-  if (anyCompletions) return 'green';
-  return 'gray';
-};
-
-/**
  * Get detailed day status including which items are behind (for calendar "why" display).
+ * (A simpler sibling, getDayStatus, was removed 2026-07-23 — dead code, no callers;
+ * this function is the one CalendarHeatmap uses.)
  * @param {Array} homework - Array of homework items
  * @param {Date} targetDate - The date to evaluate
  * @returns {{ status: 'green'|'red'|'gray', behindItems: Array<{title: string, current: number, target: number}> }}
@@ -823,69 +750,6 @@ export const calculateTotalDays = (homework) => {
   return daySet.size;
 };
 
-/**
- * Calculate week streak: consecutive calendar weeks with at least 1 homework checkmark
- * Uses Sunday-Saturday calendar weeks. Any single completion in a week = credit for that week.
- * @param {Array} homework - Array of homework items
- * @returns {number} Number of consecutive weeks with activity
- */
-export const calculateWeekStreak = (homework) => {
-  if (!homework || homework.length === 0) return 0;
-  const activeHomework = homework.filter(h => h.status === 'active');
-  if (activeHomework.length === 0) return 0;
-
-  // Collect ALL completion dates across all active homework into a Set of week keys
-  const activeWeeks = new Set();
-  for (const hw of activeHomework) {
-    const completions = hw.completions || [];
-    for (const c of completions) {
-      const cDate = c.toDate ? c.toDate() : (c.date ? new Date(c.date) : new Date(c));
-      // Apply day-rollover so a click at 1am gets attributed to yesterday's calendar week
-      const bucket = dayBucket(cDate);
-      const sunday = new Date(bucket);
-      sunday.setDate(sunday.getDate() - sunday.getDay());
-      const weekKey = `${sunday.getFullYear()}-${sunday.getMonth() + 1}-${sunday.getDate()}`;
-      activeWeeks.add(weekKey);
-    }
-  }
-
-  if (activeWeeks.size === 0) return 0;
-
-  // Count consecutive weeks backward from current week (using effective "today")
-  const now = dayBucket(new Date());
-  const currentSunday = new Date(now);
-  currentSunday.setDate(currentSunday.getDate() - currentSunday.getDay());
-  currentSunday.setHours(0, 0, 0, 0);
-
-  let streak = 0;
-  let checkWeek = new Date(currentSunday);
-
-  while (true) {
-    const weekKey = `${checkWeek.getFullYear()}-${checkWeek.getMonth() + 1}-${checkWeek.getDate()}`;
-    if (activeWeeks.has(weekKey)) {
-      streak++;
-      checkWeek.setDate(checkWeek.getDate() - 7);
-    } else {
-      break;
-    }
-    if (streak > 52) break;
-  }
-
-  // If nothing this week yet, check starting from last week
-  if (streak === 0) {
-    checkWeek = new Date(currentSunday);
-    checkWeek.setDate(checkWeek.getDate() - 7);
-    while (true) {
-      const weekKey = `${checkWeek.getFullYear()}-${checkWeek.getMonth() + 1}-${checkWeek.getDate()}`;
-      if (activeWeeks.has(weekKey)) {
-        streak++;
-        checkWeek.setDate(checkWeek.getDate() - 7);
-      } else {
-        break;
-      }
-      if (streak > 52) break;
-    }
-  }
-
-  return streak;
-};
+// calculateWeekStreak was removed 2026-07-23 — dead code with no callers. The blue
+// "days" circle it once fed was replaced 2026-06-26 by calculateTotalDays (lifetime
+// distinct active days, never resets). See docs/COUNTERS.md.
