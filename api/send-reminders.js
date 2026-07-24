@@ -2,6 +2,7 @@ import admin from 'firebase-admin';
 import crypto from 'crypto';
 import { zonedParts, zonedTodayStr, safeTz, DAY_ROLLOVER_HOUR } from './_lib/tz.js';
 import { runDailyChores } from './_lib/dailyChores.js';
+import { resolveReminderPrefs } from './_lib/reminderPrefs.js';
 
 // Allow extra time — the 3am-local tick also runs the nightly seal pass.
 export const config = { maxDuration: 60 };
@@ -639,11 +640,14 @@ export default async function handler(req, res) {
       }
       const counselee = counseleeDoc.data();
 
-      // Merge: use user doc for preferences, counselee doc for dedup
+      // Merge: user doc is AUTHORITATIVE for preferences (it's what Settings
+      // writes); counselee-doc flags are a stale legacy mirror, fallback only
+      // when the user doc has no explicit boolean. OR-gating here let a stale
+      // counselee `emailReminders:true` override a user's explicit opt-OUT
+      // (Garrett, 7/23). Logic + tests: api/_lib/reminderPrefs.js.
       const email = userData.email || counselee.email;
       const phone = userData.phone || counselee.phone;
-      const wantsSms = (userData.smsReminders || counselee.smsReminders) && phone;
-      const wantsEmail = (userData.emailReminders || counselee.emailReminders) && email;
+      const { wantsSms, wantsEmail } = resolveReminderPrefs(userData, counselee, phone, email);
       if (!wantsSms && !wantsEmail) continue;
 
       // Schedule from user doc (primary) or counselee doc (fallback)
