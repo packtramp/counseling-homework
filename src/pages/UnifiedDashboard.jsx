@@ -1512,14 +1512,20 @@ export default function UnifiedDashboard() {
         defaultSchedule[day] = { slot1: '09:00', slot2: '15:00', slot3: '20:00' };
       });
 
+      // POLICY (Roby, 7/24): NO comms when the counselor creates the account —
+      // reminders (email AND SMS) stay OFF until the counselee's FIRST LOGIN,
+      // which flips both on (see Login.jsx activation). Previously these two
+      // records were seeded with CONTRADICTORY flags (counselee sms:true,
+      // user sms:false) and the phone only landed here — Settings showed the
+      // user doc and lied about what the system was doing (issue #20).
       const counseleeDoc = {
         name: newCounselee.name,
         phone: newCounselee.phone,
         status: 'active',
         currentStreak: 0,
         createdAt: serverTimestamp(),
-        emailReminders: !!hasEmail,
-        smsReminders: true,
+        emailReminders: false,
+        smsReminders: false,
         reminderSchedule: defaultSchedule
       };
       if (hasEmail) {
@@ -1547,13 +1553,16 @@ export default function UnifiedDashboard() {
         await setDoc(doc(db, 'users', uid), {
           email: newCounselee.email.toLowerCase(),
           name: newCounselee.name,
+          phone: newCounselee.phone || '',
           role: 'counselee',
           counselorId: user.uid,
           counseleeDocId: counseleeRef.id,
           createdAt: serverTimestamp(),
           onboardingStep: 0,
-          emailReminders: true,
+          // Comms silent until first login — then activation flips both true.
+          emailReminders: false,
           smsReminders: false,
+          activateRemindersOnFirstLogin: true,
           reminderSchedule: defaultSchedule
         });
       }

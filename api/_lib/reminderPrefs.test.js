@@ -41,3 +41,28 @@ describe('resolveReminderPrefs — Garrett scenario end-to-end', () => {
     expect(p.wantsEmail).toBe(false);
   });
 });
+
+// Policy 7/24 ("no comms until first login"): counselor-created accounts are
+// seeded with BOTH flags false on BOTH records + activateRemindersOnFirstLogin.
+// Until the first login flips them, the resolver must yield total silence.
+describe('no-comms-until-first-login seeding', () => {
+  it('freshly created counselee (both records false) gets NO channels', () => {
+    const p = resolveReminderPrefs(
+      { smsReminders: false, emailReminders: false, activateRemindersOnFirstLogin: true },
+      { smsReminders: false, emailReminders: false },
+      '9044159366', 'new@counselee.com'
+    );
+    expect(p.wantsSms).toBe(false);
+    expect(p.wantsEmail).toBe(false);
+  });
+
+  it('after first-login activation (both true) all channels open', () => {
+    const p = resolveReminderPrefs(
+      { smsReminders: true, emailReminders: true },
+      { smsReminders: true, emailReminders: true },
+      '9044159366', 'new@counselee.com'
+    );
+    expect(p.wantsSms).toBe(true);
+    expect(p.wantsEmail).toBe(true);
+  });
+});

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../config/firebase';
-import { doc, setDoc, updateDoc, getDoc, deleteDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, deleteDoc, deleteField, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 // Email verification is sent server-side via notify-signup API (Resend)
 
 export default function Login() {
@@ -109,9 +109,33 @@ export default function Login() {
         const userCredential = await login(email, password);
         // Update lastLogin timestamp
         try {
-          await updateDoc(doc(db, 'users', userCredential.user.uid), {
+          const uref = doc(db, 'users', userCredential.user.uid);
+          await updateDoc(uref, {
             lastLogin: serverTimestamp()
           });
+          // FIRST-LOGIN ACTIVATION (policy 7/24): counselor-created accounts are
+          // born with all reminders OFF ("no comms until they log in"). The first
+          // real login is the consent moment — flip email+SMS on, on BOTH records,
+          // and clear the flag so this never re-runs.
+          try {
+            const usnap = await getDoc(uref);
+            const u = usnap.exists() ? usnap.data() : {};
+            if (u.activateRemindersOnFirstLogin === true) {
+              await updateDoc(uref, {
+                emailReminders: true,
+                smsReminders: true,
+                activateRemindersOnFirstLogin: deleteField()
+              });
+              if (u.counselorId && u.counseleeDocId) {
+                await updateDoc(doc(db, `counselors/${u.counselorId}/counselees/${u.counseleeDocId}`), {
+                  emailReminders: true,
+                  smsReminders: true
+                }).catch(() => {});
+              }
+            }
+          } catch (e2) {
+            console.log('First-login reminder activation skipped:', e2.message);
+          }
         } catch (e) {
           // User doc might not exist for legacy users - create it
           console.log('Could not update lastLogin:', e.message);
