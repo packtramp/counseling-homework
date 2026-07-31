@@ -1,6 +1,6 @@
 import admin from 'firebase-admin';
 import crypto from 'crypto';
-import { zonedParts, zonedTodayStr, safeTz, DAY_ROLLOVER_HOUR } from './_lib/tz.js';
+import { zonedParts, zonedTodayStr, safeTz, DAY_ROLLOVER_HOUR, rollForBucket } from './_lib/tz.js';
 import { runDailyChores } from './_lib/dailyChores.js';
 import { resolveReminderPrefs } from './_lib/reminderPrefs.js';
 
@@ -288,7 +288,7 @@ export default async function handler(req, res) {
       let completionsOutsidePeriod = 0;
       for (const c of completions) {
         const cDate = c.date?.toDate ? c.date.toDate() : (c.toDate ? c.toDate() : new Date(c));
-        const cChicago = toChicagoMidnight(cDate);
+        const cChicago = toChicagoMidnight(rollForBucket(cDate)); // 3am night-owl rule — match client dayBucket
         if (cChicago >= periodStart && cChicago <= todayChicago) {
           completionsInPeriod++;
           const dayKey = cChicago.toDateString();
@@ -414,7 +414,7 @@ export default async function handler(req, res) {
         const dailyCounts = {};
         for (const c of completions) {
           const cDate = c.date?.toDate ? c.date.toDate() : (c.toDate ? c.toDate() : new Date(c));
-          const cChicago = toChicagoMidnight(cDate);
+          const cChicago = toChicagoMidnight(rollForBucket(cDate)); // 3am night-owl rule — match client dayBucket
           if (cChicago >= periodStart && cChicago <= todayChicago) {
             const dayKey = cChicago.toDateString();
             dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
@@ -435,7 +435,7 @@ export default async function handler(req, res) {
         const isCritical = !isBehind && tasksRemaining > 0 && tasksRemaining > ((daysLeftIncludingToday - 1) * maxPerDay);
 
         const rawDailyCap = hw.dailyCap;
-        const todayKey = todayChicago.toDateString();
+        const todayKey = toChicagoMidnight(rollForBucket(now)).toDateString(); // rolled to match completion buckets
         const todayCompletions = dailyCounts[todayKey] || 0;
         const isDoneForToday = rawDailyCap ? (todayCompletions >= rawDailyCap) : (todayCompletions > 0);
 
@@ -729,7 +729,7 @@ export default async function handler(req, res) {
           const dailyCounts = {};
           for (const c of completions) {
             const cDate = c.date?.toDate ? c.date.toDate() : (c.toDate ? c.toDate() : new Date(c));
-            const cChicago = toLocal(cDate);
+            const cChicago = toLocal(rollForBucket(cDate)); // 3am night-owl rule — match client dayBucket
             if (cChicago >= periodStart && cChicago <= todayChicago) {
               const dayKey = cChicago.toDateString();
               dailyCounts[dayKey] = (dailyCounts[dayKey] || 0) + 1;
@@ -752,7 +752,7 @@ export default async function handler(req, res) {
           const isBehind = tasksRemaining > maxCanComplete;
 
           // Check if this item is done for today (matches client isCompletedToday logic)
-          const todayKey = todayChicago.toDateString();
+          const todayKey = toLocal(rollForBucket(now)).toDateString(); // rolled to match completion buckets
           const todayCompletions = dailyCounts[todayKey] || 0;
           const rawDailyCap = hw.dailyCap; // undefined if not set
           const isDoneForToday = rawDailyCap ? (todayCompletions >= rawDailyCap) : (todayCompletions > 0);
@@ -1207,8 +1207,8 @@ async function buildPartnerSection(apData, now) {
   if (!apData.watchingUsers || !Array.isArray(apData.watchingUsers) || apData.watchingUsers.length === 0) return null;
 
   const toChicagoDate = (d) => new Date(d.toLocaleDateString('en-US', { timeZone: 'America/Chicago' }));
-  const yesterday = toChicagoDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
-  const yesterdayKey = yesterday.toDateString();
+  const yesterday = toChicagoDate(new Date(rollForBucket(now).getTime() - 24 * 60 * 60 * 1000));
+  const yesterdayKey = yesterday.toDateString(); // rolled to match completion buckets
   const ms21 = AP_INACTIVE_DAYS * 86400000;
   const lines = [];
 
@@ -1273,7 +1273,7 @@ async function buildPartnerSection(apData, now) {
       let completedYesterday = false;
       for (const comp of completions) {
         const cDate = comp.date?.toDate ? comp.date.toDate() : (comp.toDate ? comp.toDate() : new Date(comp));
-        const cChicago = toChicagoMidnight(cDate);
+        const cChicago = toChicagoMidnight(rollForBucket(cDate)); // 3am night-owl rule — match client dayBucket
         if (cChicago >= periodStart && cChicago <= yesterday) {
           const dk = cChicago.toDateString();
           dailyCounts[dk] = (dailyCounts[dk] || 0) + 1;
@@ -1363,7 +1363,7 @@ async function buildCounseleeSection(counselorId, now) {
       const daysLeftIncludingToday = 7 - dayOfWeek;
       const dailyCounts = {};
       for (const comp of (hw.completions || [])) {
-        const cChicago = toChicagoMidnight(comp.date?.toDate ? comp.date.toDate() : (comp.toDate ? comp.toDate() : new Date(comp)));
+        const cChicago = toChicagoMidnight(rollForBucket(comp.date?.toDate ? comp.date.toDate() : (comp.toDate ? comp.toDate() : new Date(comp)))); // 3am rule
         if (cChicago >= periodStart && cChicago <= todayChicago) {
           const k = cChicago.toDateString();
           dailyCounts[k] = (dailyCounts[k] || 0) + 1;

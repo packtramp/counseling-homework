@@ -8,6 +8,17 @@
 
 export const DAY_ROLLOVER_HOUR = 3; // must match client homeworkHelpers.js dayBucket
 
+// Shift an instant back by the rollover before converting to a calendar day —
+// THE step the client's dayBucket() applies and server completion-bucketing was
+// missing (2026-07-31: Roby's 12:00 AM + 3:25 PM journal entries collapsed into
+// one server-day -> false "3/4, can't catch up" email while the app said 4/4).
+// Use on COMPLETION timestamps (and the "today/yesterday" keys they compare to)
+// before any toDateString()/midnight bucketing.
+export function rollForBucket(date) {
+  return new Date(date.getTime() - DAY_ROLLOVER_HOUR * 60 * 60 * 1000);
+}
+
+
 // Memoize one DateTimeFormat per tz — constructing it per call (per user, per tick) is wasteful.
 const _dtfCache = new Map();
 function _dtf(tz) {
