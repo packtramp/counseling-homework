@@ -36,3 +36,21 @@ describe('rollForBucket — the 3am night-owl rule, server side', () => {
     expect(unrolled.size).toBe(3); // proves the old behavior was the bug
   });
 });
+
+// Quiet hours (Roby 7/31): the reminder system must not operate before 3 AM
+// user-local — midnight-3AM is the ambiguous window behind this whole bug class.
+import { zonedParts } from './tz.js';
+describe('quiet hours — no reminder math before 3 AM user-local', () => {
+  it('1:30 AM Chicago is inside quiet hours', () => {
+    const t = new Date(Date.UTC(2026, 6, 26, 6, 30)); // 01:30 CDT
+    expect(zonedParts(t, 'America/Chicago').hour).toBeLessThan(DAY_ROLLOVER_HOUR);
+  });
+  it('3:00 AM Chicago is outside quiet hours', () => {
+    const t = new Date(Date.UTC(2026, 6, 26, 8, 0)); // 03:00 CDT
+    expect(zonedParts(t, 'America/Chicago').hour).toBeGreaterThanOrEqual(DAY_ROLLOVER_HOUR);
+  });
+  it('9:00 AM slot time is far clear of the window', () => {
+    const t = new Date(Date.UTC(2026, 6, 26, 14, 0)); // 09:00 CDT
+    expect(zonedParts(t, 'America/Chicago').hour).toBe(9);
+  });
+});

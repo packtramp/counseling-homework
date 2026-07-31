@@ -611,6 +611,15 @@ export default async function handler(req, res) {
       // byte-identical AND one bad tz string can never throw and abort the run (A-1).
       const tz = safeTz(userData.timezone);
       const z = zonedParts(now, tz);
+      // QUIET HOURS (Roby 7/31, after the 3rd rollover-class bug): the reminder
+      // system does NOT operate before 3 AM in the user's own timezone. Midnight-
+      // 3 AM is the ambiguous window where "today" differs between the client's
+      // dayBucket and calendar math — no email may be computed inside it, ever.
+      // (Slots set to 00:00-02:59 simply never fire; earliest real slot = 3 AM.)
+      if (z.hour < DAY_ROLLOVER_HOUR) {
+        diagnostics.push({ name: userData.name, email: userData.email, reason: 'quiet_hours_pre_3am' });
+        continue;
+      }
       const currentHour = String(z.hour).padStart(2, '0');
       const currentHHMM = currentHour + ':' + String(z.minute).padStart(2, '0');
       const todayStr = zonedTodayStr(now, tz);

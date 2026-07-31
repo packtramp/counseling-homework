@@ -244,7 +244,7 @@ export default function HelpPage() {
       <div style={sectionStyle}>
         <h2 style={h2Style}>Email Reminders</h2>
         <p style={pStyle}>
-          The app can send you up to 3 email reminders per day to help you stay on track with your homework. You control the schedule in <strong>Account Settings &gt; Reminders</strong>.
+          The app can send you up to 3 email reminders per day to help you stay on track with your homework. You control the schedule in <strong>Account Settings &gt; Reminders</strong>. Reminders never send between midnight and 3 AM — the earliest slot that fires is 3:00 AM.
         </p>
         <ul style={ulStyle}>
           <li><strong>Reminder 1</strong> — Your daily overview showing all homework and progress</li>
