@@ -1587,6 +1587,17 @@ textarea {
   margin-left: auto;
 }
 
+/* Mobile (issue #21, Nate 8/2): title + nowrap progress + action button can't
+   share one line on a phone — rows overflowed the viewport and the whole
+   dashboard side-scrolled ("misaligned"). Let rows wrap: line 1 = circle+title,
+   line 2 = progress + button, right-aligned. */
+@media (max-width: 560px) {
+  .homework-status-item { flex-wrap: wrap; }
+  .homework-status-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .homework-status-progress { white-space: normal; text-align: right; }
+  .forgot-yesterday-btn { margin-left: auto; }
+}
+
 .homework-status-progress.on-track {
   color: var(--color-success-dark);
 }
