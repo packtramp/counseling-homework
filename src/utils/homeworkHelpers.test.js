@@ -449,17 +449,21 @@ describe('getAssignedDate — single source of truth for start dates', () => {
   });
 
   it('assignedAt-only item judged IDENTICALLY by isItemBehind and the tile color', () => {
-    // The Garrett scenario: assignedAt Jul 5, target 7/wk, current week Jul 19-25,
-    // only 2 completions (Jul 21, 22), evaluated Jul 23 -> 2 done + 3 left = 5 < 7.
+    // The Garrett scenario, anchored RELATIVE to today (calculateAccountabilityStatus
+    // uses real `new Date()` internally — fixed calendar dates made this test flaky:
+    // it failed every 7th day when the item's week rolled over. Caught 8/2 when it
+    // slipped through the then-broken pre-push gate.
+    // Day 6 of the item's week, zero completions: 1 day left, max 1 < 7 -> behind/red
+    // via BOTH functions, resolved through the assignedAt fallback.
+    const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); d.setHours(12, 0, 0, 0); return d; };
     const item = {
       status: 'active',
       weeklyTarget: 7,
-      assignedAt: { toDate: () => jul5 },
-      completions: [makeCompletion(makeDate(2026, 7, 21)), makeCompletion(makeDate(2026, 7, 22))]
+      assignedAt: { toDate: () => daysAgo(13) },
+      completions: []
     };
-    const now = makeDate(2026, 7, 23);
     // Before the fix: tile said behind (used assignedAt), count said fine (defaulted to today).
-    expect(isItemBehind(item, now)).toBe(true);
+    expect(isItemBehind(item, new Date())).toBe(true);
     expect(calculateAccountabilityStatus([item], null)).toBe('red');
   });
 
