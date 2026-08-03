@@ -4688,6 +4688,11 @@ button.counselor-check-indicator.clickable-check:active {
   min-width: 0;
 }
 
+/* Status label variants: desktop shows the full text, phones swap to the
+   brief synonym (the <=480px block flips these). */
+.st-brief { display: none; }
+.st-full { display: inline; }
+
 .accountability-tile-name {
   font-size: 0.9rem;
   font-weight: 600;
@@ -4788,7 +4793,7 @@ button.counselor-check-indicator.clickable-check:active {
   }
 
   .accountability-tile {
-    padding: 0.35rem 0.5rem;
+    padding: 0.35rem 0.4rem;
     border-radius: 6px;
     display: flex;
     flex-direction: row;
@@ -4796,14 +4801,19 @@ button.counselor-check-indicator.clickable-check:active {
     gap: 0.4rem;
   }
 
-  /* Everything in one horizontal row */
-  .accountability-tile-top {
+  /* Everything in one horizontal row. Selector is deliberately DOUBLE
+     (.accountability-tile .accountability-tile-top): a later unscoped
+     `.accountability-tile-top{display:flex;width:100%}` (line ~7920, added with
+     the encourage-bar work) ties this rule's specificity and won on file order
+     — silently un-flattening mobile tiles and locking a rigid 180px middle box
+     (the invisible saboteur behind issues #23/#25/#26). */
+  .accountability-tile .accountability-tile-top {
     display: contents;
   }
 
   .accountability-tile .profile-photo-wrapper {
-    width: 32px !important;
-    height: 32px !important;
+    width: 28px !important;
+    height: 28px !important;
     flex-shrink: 0;
   }
 
@@ -4839,11 +4849,11 @@ button.counselor-check-indicator.clickable-check:active {
     overflow: hidden;
     text-overflow: ellipsis;
     overflow-wrap: normal;
-    /* Squeeze order under pressure: status text ellipsizes first, then the
-       name shrinks (never below 64px) — the buttons NEVER leave the tile. */
-    flex: 0 1 auto;
+    /* Issue #26: spare width belongs to the NAME, not to an empty middle
+       column. Name grows into free space (full "Rocky Dorsett"), shrinks to
+       64px floor under pressure — buttons never leave the tile. */
+    flex: 1 1 auto;
     min-width: 64px;
-    max-width: 45%;
     margin-bottom: 0;
   }
 
@@ -4870,19 +4880,26 @@ button.counselor-check-indicator.clickable-check:active {
        hidden below), shrink allowed, right-aligned, emoji stays tappable. */
     flex-shrink: 1;
     min-width: 0;
-    margin-left: auto;
+    /* no auto margin: the growing NAME owns the spare width, not this bar */
     gap: 0.15rem;
   }
   .accountability-tile .encourage-bar .eb-word {
     display: none;
   }
   .accountability-tile .encourage-bar-btn {
-    padding: 5px 8px;
-    font-size: 1.15rem;  /* bigger tap-friendly emoji (Roby) */
+    padding: 4px 5px;
+    flex-shrink: 1;
+    min-width: 0;
+    font-size: 1.05rem;  /* big tap-friendly emoji (Roby), tuned so names fit at 360px */
     line-height: 1;
   }
   /* Status ("3 behind", "Required today") on ONE line; it ellipsizes under
-     extreme pressure rather than stacking words (Roby 8/3). */
+     extreme pressure rather than stacking words (Roby 8/3). The info column
+     hugs its content instead of hoarding free width (issue #26 dead space). */
+  .accountability-tile-info { flex: 0 3 auto; } /* status yields 3x faster than names under squeeze */
+  /* phones show the short status synonym, desktop the full label */
+  .st-brief { display: inline; }
+  .st-full { display: none; }
   .accountability-tile-meta { min-width: 0; overflow: hidden; }
   .accountability-tile-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 100%; }
 

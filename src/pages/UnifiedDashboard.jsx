@@ -824,6 +824,16 @@ export default function UnifiedDashboard() {
     }
   };
 
+  // Mobile-short status labels (8/3, issue #26 follow-through): phones show a
+  // compact synonym instead of an ellipsized full label ("Required tod...").
+  const STATUS_BRIEF = { 'Required today': 'Due today', 'On vacation': 'Vacation', 'No activity today': 'Quiet today' };
+  const statusSpans = (label) => (
+    <>
+      <span className="st-full">{label}</span>
+      <span className="st-brief">{STATUS_BRIEF[label] || label}</span>
+    </>
+  );
+
   const formatAPStreak = (streak) => {
     if (!streak || streak < 1) return '0 day streak';
     return `${streak} day streak`;
@@ -2872,7 +2882,7 @@ export default function UnifiedDashboard() {
                           <div className="accountability-tile-email">{person.email}</div>
                           <div className="accountability-tile-meta">
                             <span className="accountability-tile-status">
-                              {getAPStatusLabel(status)}
+                              {statusSpans(getAPStatusLabel(status))}
                             </span>
                           </div>
                         </div>
@@ -2959,7 +2969,7 @@ export default function UnifiedDashboard() {
                             <div className="accountability-tile-email">{counselee.email || 'No email'}</div>
                             <div className="accountability-tile-meta">
                               <span className="accountability-tile-status">
-                                {statusLabel}
+                                {statusSpans(statusLabel)}
                               </span>
                             </div>
                           </div>
