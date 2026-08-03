@@ -4831,6 +4831,17 @@ button.counselor-check-indicator.clickable-check:active {
 
   .accountability-tile-name {
     font-size: 0.8rem;
+    /* Issue #23 (Roby) + half of #22 (Nate): in the mobile ROW layout the name
+       column had no width policy — it collapsed to min-content and
+       overflow-wrap:anywhere shattered names mid-word ("Rocky Dorset t").
+       One line, real room, ellipsis only when genuinely too long. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: normal;
+    flex: 0 0 auto;   /* the NAME keeps its natural width; other columns shrink */
+    max-width: 45%;   /* only truly long names ellipsize */
+    margin-bottom: 0;
   }
 
   .accountability-tile-email {
