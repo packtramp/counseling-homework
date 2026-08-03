@@ -673,13 +673,13 @@ export default function UnifiedDashboard() {
     return (
       <div className="encourage-bar" onClick={e => e.stopPropagation()}>
         <button className={`encourage-bar-btn${sent.cheer ? ' sent' : ''}`} disabled={sent.cheer || sendingEncouragement} onClick={() => sendEncouragement(recipientUid, 'cheer')}>
-          👍 {sent.cheer ? 'Sent' : 'Cheer'}
+          👍<span className="eb-word"> {sent.cheer ? 'Sent' : 'Cheer'}</span>
         </button>
         <button className={`encourage-bar-btn${sent.nudge ? ' sent' : ''}`} disabled={sent.nudge || sendingEncouragement} onClick={() => sendEncouragement(recipientUid, 'nudge')}>
-          👊 {sent.nudge ? 'Sent' : 'Nudge'}
+          👊<span className="eb-word"> {sent.nudge ? 'Sent' : 'Nudge'}</span>
         </button>
         <button className={`encourage-bar-btn${sent.message ? ' sent' : ''}`} disabled={sent.message || sendingEncouragement} onClick={() => { if (!sent.message) setShowMessageInput(recipientUid); }}>
-          💬 {sent.message ? 'Sent' : 'Message'}
+          💬<span className="eb-word"> {sent.message ? 'Sent' : 'Message'}</span>
         </button>
       </div>
     );
@@ -691,13 +691,13 @@ export default function UnifiedDashboard() {
     return (
       <div className="encouragement-actions">
         <button className="encouragement-btn cheer-btn" disabled={sent.cheer || sendingEncouragement} onClick={() => sendEncouragement(recipientUid, 'cheer')}>
-          👍 {sent.cheer ? 'Sent' : 'Cheer'}
+          👍<span className="eb-word"> {sent.cheer ? 'Sent' : 'Cheer'}</span>
         </button>
         <button className="encouragement-btn nudge-btn" disabled={sent.nudge || sendingEncouragement} onClick={() => sendEncouragement(recipientUid, 'nudge')}>
-          👊 {sent.nudge ? 'Sent' : 'Nudge'}
+          👊<span className="eb-word"> {sent.nudge ? 'Sent' : 'Nudge'}</span>
         </button>
         <button className="encouragement-btn message-btn" disabled={sent.message || sendingEncouragement} onClick={() => { if (!sent.message) setShowMessageInput(recipientUid); }}>
-          💬 {sent.message ? 'Sent' : 'Message'}
+          💬<span className="eb-word"> {sent.message ? 'Sent' : 'Message'}</span>
         </button>
       </div>
     );

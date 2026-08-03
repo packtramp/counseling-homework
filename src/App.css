@@ -4839,8 +4839,11 @@ button.counselor-check-indicator.clickable-check:active {
     overflow: hidden;
     text-overflow: ellipsis;
     overflow-wrap: normal;
-    flex: 0 0 auto;   /* the NAME keeps its natural width; other columns shrink */
-    max-width: 45%;   /* only truly long names ellipsize */
+    /* Squeeze order under pressure: status text ellipsizes first, then the
+       name shrinks (never below 64px) — the buttons NEVER leave the tile. */
+    flex: 0 1 auto;
+    min-width: 64px;
+    max-width: 45%;
     margin-bottom: 0;
   }
 
@@ -4862,9 +4865,26 @@ button.counselor-check-indicator.clickable-check:active {
     border-top: none;
     margin-top: 0;
     padding-top: 0;
-    flex-shrink: 0;
+    /* Issues #24/#25: flex-shrink:0 made this bar refuse to shrink — the
+       Message button punched outside the tile. Mobile = icons-only (words
+       hidden below), shrink allowed, right-aligned, emoji stays tappable. */
+    flex-shrink: 1;
+    min-width: 0;
+    margin-left: auto;
     gap: 0.15rem;
   }
+  .accountability-tile .encourage-bar .eb-word {
+    display: none;
+  }
+  .accountability-tile .encourage-bar-btn {
+    padding: 5px 8px;
+    font-size: 1.15rem;  /* bigger tap-friendly emoji (Roby) */
+    line-height: 1;
+  }
+  /* Status ("3 behind", "Required today") on ONE line; it ellipsizes under
+     extreme pressure rather than stacking words (Roby 8/3). */
+  .accountability-tile-meta { min-width: 0; overflow: hidden; }
+  .accountability-tile-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 100%; }
 
   .encourage-bar-btn {
     font-size: 0.65rem;
