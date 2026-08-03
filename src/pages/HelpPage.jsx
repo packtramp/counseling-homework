@@ -332,6 +332,7 @@ export default function HelpPage() {
           <li>Update your name and profile photo</li>
           <li>Change your email or phone number</li>
           <li>Configure your reminder schedule (times and days)</li>
+          <li><strong>Update the app</strong> — Settings &gt; About &gt; "Get latest version" forces the app to fetch the newest release. Use it if your screen ever looks outdated or misaligned.</li>
           <li>Turn email reminders on or off</li>
           <li>Toggle Vacation Mode on or off</li>
           <li>Send feedback or report issues</li>
