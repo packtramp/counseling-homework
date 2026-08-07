@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import { isCallerSuperAdmin, isTargetSuperAdmin } from './_lib/adminAuth.js';
 
 // Initialize Firebase Admin if not already done
 if (!admin.apps.length) {
@@ -49,9 +50,8 @@ export default async function handler(req, res) {
 
     // === ADMIN DELETE MODE ===
     if (adminDelete && targetUid) {
-      // Verify caller is superAdmin
-      const callerDoc = await db.collection('users').doc(decodedToken.uid).get();
-      if (!callerDoc.exists || !callerDoc.data().isSuperAdmin) {
+      // Verify caller is superAdmin (claim preferred, Firestore fallback — see _lib/adminAuth.js)
+      if (!(await isCallerSuperAdmin(decodedToken, db))) {
         return res.status(403).json({ error: 'Forbidden - requires superAdmin' });
       }
 
@@ -60,9 +60,10 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Cannot delete your own account' });
       }
 
-      // Prevent deleting other superAdmins
+      // Prevent deleting other superAdmins. Checks BOTH the custom claim and the Firestore
+      // field, so an admin stays protected even if the two sources are out of sync.
       const targetDoc = await db.collection('users').doc(targetUid).get();
-      if (targetDoc.exists && targetDoc.data().isSuperAdmin) {
+      if (await isTargetSuperAdmin(targetUid, db, admin.auth())) {
         return res.status(400).json({ error: 'Cannot delete a superAdmin account' });
       }
 

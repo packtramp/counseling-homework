@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import { isCallerSuperAdmin } from './_lib/adminAuth.js';
 
 // Initialize Firebase Admin if not already done
 if (!admin.apps.length) {
@@ -44,10 +45,10 @@ export default async function handler(req, res) {
     const token = authHeader.split('Bearer ')[1];
     const decodedToken = await admin.auth().verifyIdToken(token);
 
-    // Verify caller is a superAdmin
+    // Verify caller is a superAdmin (custom claim preferred; Firestore field is the
+    // legacy fallback during the claims migration — see api/_lib/adminAuth.js)
     const db = admin.firestore();
-    const callerDoc = await db.collection('users').doc(decodedToken.uid).get();
-    if (!callerDoc.exists || !callerDoc.data().isSuperAdmin) {
+    if (!(await isCallerSuperAdmin(decodedToken, db))) {
       return res.status(403).json({ error: 'Forbidden - requires superAdmin' });
     }
 
