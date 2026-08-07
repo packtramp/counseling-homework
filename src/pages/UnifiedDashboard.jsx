@@ -1550,31 +1550,38 @@ export default function UnifiedDashboard() {
         await updateDoc(doc(db, 'users', user.uid), { isCounselor: true });
       }
 
-      // Only create counseleeLinks and users doc if email was provided
+      // Only create counseleeLinks and users doc if email was provided.
+      // SECURITY (8/3): these two docs carry the privileged fields (counselorId,
+      // counseleeDocId, role, approved) that decide who can read this person's
+      // content, so the SERVER writes them after verifying we own the counselee
+      // record. The client no longer writes them — that is what lets firestore.rules
+      // forbid client-set privileged fields outright.
       if (hasEmail && uid) {
-        const emailKey = newCounselee.email.toLowerCase().replace(/[.]/g, '_');
-        await setDoc(doc(db, 'counseleeLinks', emailKey), {
-          counselorId: user.uid,
-          counseleeDocId: counseleeRef.id,
-          email: newCounselee.email.toLowerCase(),
-          name: newCounselee.name
+        const idToken = await auth.currentUser.getIdToken();
+        const provRes = await fetch('/api/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+          body: JSON.stringify({
+            action: 'provision',
+            counseleeUid: uid,
+            counseleeDocId: counseleeRef.id,
+            profile: {
+              email: newCounselee.email.toLowerCase(),
+              name: newCounselee.name,
+              phone: newCounselee.phone || '',
+              onboardingStep: 0,
+              // Comms silent until first login — then activation flips both true.
+              emailReminders: false,
+              smsReminders: false,
+              activateRemindersOnFirstLogin: true,
+              reminderSchedule: defaultSchedule
+            }
+          })
         });
-
-        await setDoc(doc(db, 'users', uid), {
-          email: newCounselee.email.toLowerCase(),
-          name: newCounselee.name,
-          phone: newCounselee.phone || '',
-          role: 'counselee',
-          counselorId: user.uid,
-          counseleeDocId: counseleeRef.id,
-          createdAt: serverTimestamp(),
-          onboardingStep: 0,
-          // Comms silent until first login — then activation flips both true.
-          emailReminders: false,
-          smsReminders: false,
-          activateRemindersOnFirstLogin: true,
-          reminderSchedule: defaultSchedule
-        });
+        if (!provRes.ok) {
+          const e = await provRes.json().catch(() => ({}));
+          throw new Error(e.error || 'Failed to set up the counselee account');
+        }
       }
 
       setNewCounselee({ name: '', email: '', phone: '', password: '' });
@@ -1618,27 +1625,29 @@ export default function UnifiedDashboard() {
       emailReminders: true
     });
 
-    // Create counseleeLinks
-    const emailKey = email.toLowerCase().replace(/[.]/g, '_');
-    await setDoc(doc(db, 'counseleeLinks', emailKey), {
-      counselorId: user.uid,
-      counseleeDocId: selectedCounselee.id,
-      email: email.toLowerCase(),
-      name: selectedCounselee.name
+    // SECURITY (8/3): counseleeLinks + the user doc carry the privileged fields that
+    // decide who can read this person's content, so the SERVER writes them after
+    // verifying we own the counselee record. See api/create-user.js handleProvision.
+    const provIdToken = await auth.currentUser.getIdToken();
+    const provResp = await fetch('/api/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${provIdToken}` },
+      body: JSON.stringify({
+        action: 'provision',
+        counseleeUid: data.uid,
+        counseleeDocId: selectedCounselee.id,
+        profile: {
+          email: email.toLowerCase(),
+          name: selectedCounselee.name,
+          timezone: 'America/Chicago', // default; counselee sets their own in Settings
+          onboardingStep: 0
+        }
+      })
     });
-
-    // Create users doc
-    await setDoc(doc(db, 'users', data.uid), {
-      email: email.toLowerCase(),
-      name: selectedCounselee.name,
-      role: 'counselee',
-      counselorId: user.uid,
-      counseleeDocId: selectedCounselee.id,
-      approved: true, // counselor-invited = vetted
-      timezone: 'America/Chicago', // default; counselee sets their own in Settings
-      createdAt: serverTimestamp(),
-      onboardingStep: 0
-    });
+    if (!provResp.ok) {
+      const e = await provResp.json().catch(() => ({}));
+      throw new Error(e.error || 'Failed to set up the counselee account');
+    }
 
     // Update local state
     setSelectedCounselee(prev => ({ ...prev, email, uid: data.uid, emailReminders: true }));
