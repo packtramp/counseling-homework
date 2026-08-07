@@ -41,6 +41,99 @@ if (!admin.apps.length) {
   }
 }
 
+/**
+ * Server-side provisioning of a counselee's user profile + counseleeLink.
+ *
+ * WHY (2026-08-03 security review): these documents carry the PRIVILEGED fields
+ * (`counselorId`, `counseleeDocId`, `role`, `approved`) that decide who may read a
+ * person's counseling content. While the CLIENT writes them, the Firestore rules must
+ * stay permissive enough to allow it — which is exactly what let a user self-grant
+ * privileged fields. Moving the write here lets the rules lock the client out entirely.
+ *
+ * AUTHORIZATION: the caller must OWN the counselee record being provisioned —
+ * `counselors/{callerUid}/counselees/{counseleeDocId}` must exist AND its `uid` must
+ * match (or be unset). A caller cannot name someone else's counselee, nor invent a
+ * binding with no record behind it.
+ *
+ * NOTE: deliberately does NOT auto-bind a self-signup to a counselor — that requires
+ * the invitee's consent and is handled separately.
+ */
+const PRIVILEGED = ['role', 'counselorId', 'counseleeDocId', 'approved', 'isAdmin', 'isSuperAdmin', 'isCounselor'];
+
+async function handleProvision(req, res) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  let callerUid;
+  try {
+    callerUid = (await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1])).uid;
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  const { counseleeUid, counseleeDocId, profile = {} } = req.body || {};
+  if (!counseleeUid || !counseleeDocId) {
+    return res.status(400).json({ error: 'Missing counseleeUid or counseleeDocId' });
+  }
+
+  try {
+    const db = admin.firestore();
+
+    // AUTHORIZATION: caller must own this counselee record, and it must point at the
+    // user being provisioned. This is what makes the binding trustworthy.
+    const recRef = db.doc(`counselors/${callerUid}/counselees/${counseleeDocId}`);
+    const rec = await recRef.get();
+    if (!rec.exists) {
+      return res.status(403).json({ error: 'Not your counselee record' });
+    }
+    if (rec.data().uid && rec.data().uid !== counseleeUid) {
+      return res.status(403).json({ error: 'Counselee record points at a different user' });
+    }
+
+    // Strip anything privileged the client tried to send; the server sets those itself.
+    const safeProfile = {};
+    for (const [k, v] of Object.entries(profile)) {
+      if (!PRIVILEGED.includes(k)) safeProfile[k] = v;
+    }
+
+    const email = (safeProfile.email || rec.data().email || '').toLowerCase();
+
+    await db.collection('users').doc(counseleeUid).set({
+      ...safeProfile,
+      email,
+      role: 'counselee',
+      counselorId: callerUid,
+      counseleeDocId,
+      approved: true, // counselor-invited = already vetted
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    if (!rec.data().uid) await recRef.update({ uid: counseleeUid });
+
+    if (email) {
+      await db.collection('counseleeLinks').doc(email.replace(/[.]/g, '_')).set({
+        counselorId: callerUid,
+        counseleeDocId,
+        email,
+        name: safeProfile.name || rec.data().name || '',
+      });
+    }
+
+    const callerRef = db.collection('users').doc(callerUid);
+    const caller = await callerRef.get();
+    if (caller.exists && !caller.data().isCounselor) {
+      await callerRef.update({ isCounselor: true });
+    }
+
+    return res.status(200).json({ success: true, uid: counseleeUid });
+  } catch (error) {
+    console.error('provision error:', error.message);
+    return res.status(500).json({ error: 'Failed to provision counselee' });
+  }
+}
+
 export default async function handler(req, res) {
   // Only allow POST
   if (req.method !== 'POST') {
@@ -53,6 +146,13 @@ export default async function handler(req, res) {
       error: 'Firebase Admin not initialized',
       hint: 'Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY env vars in Vercel'
     });
+  }
+
+  // action:'provision' — write the counselee's user doc + counseleeLink SERVER-SIDE.
+  // Folded into this endpoint rather than its own file because the Vercel Hobby plan
+  // caps a deployment at 12 Serverless Functions and we are at the limit.
+  if (req.body?.action === 'provision') {
+    return handleProvision(req, res);
   }
 
   const { email, password, counselorId, name } = req.body;
