@@ -6,7 +6,7 @@
  * token and cannot be forged. During migration BOTH are accepted so no admin is locked out.
  */
 import { describe, it, expect } from 'vitest';
-import { isCallerSuperAdmin, isTargetSuperAdmin } from '../../../api/_lib/adminAuth.js';
+import { isCallerSuperAdmin, isTargetSuperAdmin, ALLOW_FIRESTORE_FALLBACK } from '../../../api/_lib/adminAuth.js';
 
 // Minimal Firestore stub: db.collection('users').doc(uid).get()
 const makeDb = (docs) => ({
@@ -43,12 +43,26 @@ describe('isCallerSuperAdmin — the unforgeable path', () => {
   });
 });
 
-describe('isCallerSuperAdmin — the legacy fallback (keeps admins working mid-migration)', () => {
-  it('accepts an admin who has the Firestore field but NOT yet the claim', async () => {
-    const db = makeDb({ legacy: { isSuperAdmin: true } });
-    expect(await isCallerSuperAdmin({ uid: 'legacy' }, db)).toBe(true);
+describe('THE ESCALATION IS CLOSED — a forged Firestore field grants nothing', () => {
+  it('has the fallback disabled', () => {
+    expect(ALLOW_FIRESTORE_FALLBACK).toBe(false);
   });
 
+  // This is the exact attack from the 2026-08-03 review: a user deletes and recreates
+  // their own users/{uid} doc with isSuperAdmin:true. With the fallback closed, the
+  // forged field is simply not consulted for authorization.
+  it('REJECTS a caller who forged isSuperAdmin:true in Firestore but holds no claim', async () => {
+    const db = makeDb({ attacker: { isSuperAdmin: true } });
+    expect(await isCallerSuperAdmin({ uid: 'attacker' }, db)).toBe(false);
+  });
+
+  it('still accepts the real admin via the claim', async () => {
+    const db = makeDb({ roby: { isSuperAdmin: true } });
+    expect(await isCallerSuperAdmin({ uid: 'roby', isSuperAdmin: true }, db)).toBe(true);
+  });
+});
+
+describe('isCallerSuperAdmin — non-admin cases', () => {
   it('rejects a normal user with neither', async () => {
     const db = makeDb({ normal: { isSuperAdmin: false } });
     expect(await isCallerSuperAdmin({ uid: 'normal' }, db)).toBe(false);

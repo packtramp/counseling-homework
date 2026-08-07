@@ -14,8 +14,12 @@
  * Revert: `node tools/revert-claims.cjs` (strips claims; fallback keeps admins working).
  */
 
-// Flip to false once all admins hold claims — that is what actually closes the escalation.
-export const ALLOW_FIRESTORE_FALLBACK = true;
+// CLOSED 2026-08-03. The Firestore field is no longer accepted for authorization, so
+// recreating your own user doc with isSuperAdmin:true grants nothing. Verified before
+// flipping: every superAdmin in Firestore (1: robdorsett@gmail.com) holds the claim.
+// To re-open temporarily (e.g. a new admin not yet synced): set true, deploy, run
+// `node tools/sync-admin-claims.cjs`, then set false again.
+export const ALLOW_FIRESTORE_FALLBACK = false;
 
 /**
  * Is the caller a superAdmin?
