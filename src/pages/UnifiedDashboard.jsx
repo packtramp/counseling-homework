@@ -40,7 +40,10 @@ const updateUrl = (params) => {
 
 
 export default function UnifiedDashboard() {
-  const { user, userProfile, isCounselor, isSuperAdmin, logout } = useAuth();
+  const { user, userProfile, isCounselor, isSuperAdmin, logout,
+          pendingCounselorInvite, acceptCounselorInvite, declineCounselorInvite } = useAuth();
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState('');
   const navigate = useNavigate();
 
   // UI state
@@ -2709,6 +2712,33 @@ export default function UnifiedDashboard() {
         {/* "ME" SECTION */}
         <>
             <VacationBanner userProfile={userProfile} />
+            {pendingCounselorInvite && (
+              <div className="counselor-invite-banner">
+                <p>
+                  <strong>{pendingCounselorInvite.counselorName || 'A counselor'}</strong> has invited you
+                  to be their counselee. If you accept, they'll be able to see your homework, journals,
+                  and activity so they can walk alongside you.
+                </p>
+                {inviteError && <p className="invite-error">{inviteError}</p>}
+                <div className="counselor-invite-actions">
+                  <button
+                    className="invite-accept"
+                    disabled={inviteBusy}
+                    onClick={async () => {
+                      setInviteBusy(true); setInviteError('');
+                      try { await acceptCounselorInvite(); }
+                      catch (e) { setInviteError(e.message); }
+                      finally { setInviteBusy(false); }
+                    }}
+                  >
+                    {inviteBusy ? 'Accepting…' : 'Accept'}
+                  </button>
+                  <button className="invite-decline" disabled={inviteBusy} onClick={declineCounselorInvite}>
+                    Not now
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="greeting-row">
               <ProfilePhoto photoUrl={myData?.counseleePhotoUrl || myData?.photoUrl} size="small" />
               <p className="greeting">Hi, {myData?.name || userProfile?.name || 'there'}!</p>

@@ -9,6 +9,9 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  // A counselor has invited this email, but the person has NOT accepted yet.
+  // Nothing is bound until they do — see the security note in the auth listener.
+  const [pendingCounselorInvite, setPendingCounselorInvite] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -19,32 +22,44 @@ export function AuthProvider({ children }) {
         if (profileDoc.exists()) {
           setUserProfile(profileDoc.data());
         } else {
-          // No profile yet - check if this email is linked to a counselor
+          // No profile yet — check whether someone has invited this email to be their counselee.
+          //
+          // SECURITY (8/3): we used to AUTO-BIND here, writing counselorId/role/approved
+          // straight from the invite. But anyone can create a counseleeLink for any email
+          // address, so a stranger could pre-plant one and silently become this person's
+          // counselor — which routes every journal they write into the stranger's subtree.
+          // Now the invite only produces a PROMPT; nothing is bound until the person
+          // accepts, and the binding itself happens server-side.
           const emailKey = firebaseUser.email.toLowerCase().replace(/[.]/g, '_');
           const linkDoc = await getDoc(doc(db, 'counseleeLinks', emailKey));
+
+          // A minimal profile so the app is usable — deliberately NO privileged fields.
+          const baseProfile = {
+            email: firebaseUser.email,
+            name: linkDoc.exists() ? linkDoc.data().name : (firebaseUser.displayName || ''),
+            timezone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'America/Chicago',
+            createdAt: new Date(),
+            onboardingStep: 0
+          };
+          await setDoc(doc(db, 'users', firebaseUser.uid), baseProfile);
+          setUserProfile(baseProfile);
+
           if (linkDoc.exists()) {
-            // Auto-create counselee profile
-            const linkData = linkDoc.data();
-            const newProfile = {
-              email: firebaseUser.email,
-              name: linkData.name,
-              role: 'counselee',
-              counselorId: linkData.counselorId,
-              counseleeDocId: linkData.counseleeDocId,
-              // Invited by a counselor = already vetted → auto-approved (no pending gate).
-              approved: true,
-              // Auto-capture the counselee's device timezone on first login (Central fallback).
-              timezone: (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'America/Chicago',
-              createdAt: new Date(),
-              onboardingStep: 0
-            };
-            await setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
-            setUserProfile(newProfile);
+            // NOTE: the link's `name` is the COUNSELEE's name — look up the counselor's
+            // own name so the prompt says who is actually asking.
+            const counselorId = linkDoc.data().counselorId;
+            let counselorName = '';
+            try {
+              const cDoc = await getDoc(doc(db, 'users', counselorId));
+              if (cDoc.exists()) counselorName = cDoc.data().name || cDoc.data().email || '';
+            } catch (e) { /* name is cosmetic; prompt still works without it */ }
+            setPendingCounselorInvite({ counselorId, counselorName });
           }
         }
       } else {
         setUser(null);
         setUserProfile(null);
+        setPendingCounselorInvite(null);
       }
       setLoading(false);
     });
@@ -64,6 +79,27 @@ export function AuthProvider({ children }) {
     return signOut(auth);
   };
 
+  // The invitee CONSENTS to the counselor relationship. The privileged fields
+  // (counselorId/counseleeDocId/role/approved) are written server-side, never here.
+  const acceptCounselorInvite = async () => {
+    const idToken = await auth.currentUser.getIdToken();
+    const res = await fetch('/api/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ action: 'accept-counselor-invite' })
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || 'Could not accept the invitation');
+    }
+    const fresh = await getDoc(doc(db, 'users', auth.currentUser.uid));
+    if (fresh.exists()) setUserProfile(fresh.data());
+    setPendingCounselorInvite(null);
+  };
+
+  // Declining just dismisses the prompt; no relationship is created.
+  const declineCounselorInvite = () => setPendingCounselorInvite(null);
+
   const value = {
     user,
     userProfile,
@@ -71,6 +107,9 @@ export function AuthProvider({ children }) {
     login,
     signup,
     logout,
+    pendingCounselorInvite,
+    acceptCounselorInvite,
+    declineCounselorInvite,
     // Support both old role-based system AND new flag-based system
     isCounselor: userProfile?.isCounselor === true || userProfile?.role === 'counselor',
     isSuperAdmin: userProfile?.isSuperAdmin === true,

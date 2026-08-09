@@ -134,6 +134,82 @@ async function handleProvision(req, res) {
   }
 }
 
+/**
+ * The invited person ACCEPTS a counselor relationship.
+ *
+ * WHY CONSENT (2026-08-03 review): `counseleeLinks` can be created by ANY signed-in user
+ * for ANY email address (firestore.rules:88 only requires you name yourself as the
+ * counselor), and the counselee record backing it lives in that same user's own subtree.
+ * Both sides of any "is this invite real?" server check are therefore attacker-authored —
+ * validation cannot fix it. Previously the app AUTO-BOUND on first login, so a stranger
+ * could pre-plant a link for someone's email and silently become their counselor, which
+ * puts every journal that person writes inside the stranger's subtree.
+ *
+ * The fix is consent: the invite does nothing until the invitee accepts it. A forged link
+ * becomes a prompt they can decline, not a silent capture.
+ *
+ * The caller may only accept an invite addressed to THEIR OWN verified token email.
+ */
+async function handleAcceptCounselorInvite(req, res) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  let decoded;
+  try {
+    decoded = await admin.auth().verifyIdToken(authHeader.split('Bearer ')[1]);
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  const callerEmail = (decoded.email || '').toLowerCase();
+  if (!callerEmail) {
+    return res.status(400).json({ error: 'No email on account' });
+  }
+
+  try {
+    const db = admin.firestore();
+
+    // The invite must be addressed to the CALLER'S OWN email — never a client-supplied one.
+    const linkRef = db.collection('counseleeLinks').doc(callerEmail.replace(/[.]/g, '_'));
+    const link = await linkRef.get();
+    if (!link.exists) {
+      return res.status(404).json({ error: 'No pending invite for your account' });
+    }
+
+    const { counselorId, counseleeDocId } = link.data();
+    if (!counselorId || !counseleeDocId) {
+      return res.status(400).json({ error: 'Invite is incomplete' });
+    }
+
+    // The counselee record must actually exist before we bind anyone to it.
+    const recRef = db.doc(`counselors/${counselorId}/counselees/${counseleeDocId}`);
+    const rec = await recRef.get();
+    if (!rec.exists) {
+      return res.status(404).json({ error: 'Invite no longer valid' });
+    }
+    if (rec.data().uid && rec.data().uid !== decoded.uid) {
+      return res.status(409).json({ error: 'That invite already belongs to another account' });
+    }
+
+    // Bind — these privileged fields are set ONLY here, server-side, after consent.
+    await db.collection('users').doc(decoded.uid).set({
+      role: 'counselee',
+      counselorId,
+      counseleeDocId,
+      approved: true,
+    }, { merge: true });
+
+    if (!rec.data().uid) await recRef.update({ uid: decoded.uid });
+
+    return res.status(200).json({ success: true, counselorId });
+  } catch (error) {
+    console.error('accept-counselor-invite error:', error.message);
+    return res.status(500).json({ error: 'Failed to accept invite' });
+  }
+}
+
 export default async function handler(req, res) {
   // Only allow POST
   if (req.method !== 'POST') {
@@ -153,6 +229,9 @@ export default async function handler(req, res) {
   // caps a deployment at 12 Serverless Functions and we are at the limit.
   if (req.body?.action === 'provision') {
     return handleProvision(req, res);
+  }
+  if (req.body?.action === 'accept-counselor-invite') {
+    return handleAcceptCounselorInvite(req, res);
   }
 
   const { email, password, counselorId, name } = req.body;
