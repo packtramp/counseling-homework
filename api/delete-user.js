@@ -153,7 +153,22 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
+    // AUTHORIZATION (8/3): proving you are `counselorId` is trivial — you just pass your
+    // own uid. Without the check below, ANY signed-in user could delete ANY account by
+    // naming its uid. The target must actually be this counselor's counselee.
+    const targetProfile = await db.collection('users').doc(uid).get();
+    if (!targetProfile.exists || targetProfile.data().counselorId !== decodedToken.uid) {
+      return res.status(403).json({ error: 'Not your counselee' });
+    }
+
+    // Never let this path remove an admin.
+    if (await isTargetSuperAdmin(uid, db, admin.auth())) {
+      return res.status(400).json({ error: 'Cannot delete a superAdmin account' });
+    }
+
     await admin.auth().deleteUser(uid);
+    // Remove the profile server-side too, so the client needs no delete permission.
+    await db.collection('users').doc(uid).delete();
 
     return res.status(200).json({ success: true });
   } catch (error) {

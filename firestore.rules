@@ -12,8 +12,34 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // Users can read their own profile; create/delete their own doc
-      allow read, create, delete: if request.auth != null && request.auth.uid == userId;
+      // Users can read their own profile
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // CREATE (locked 2026-08-03). A person may create ONLY their own profile, and ONLY
+      // without privileged fields. Previously there were TWO create rules — this one and a
+      // `counselorId == request.auth.uid` one below — and Firestore ORs every matching
+      // allow, so a user could create users/{self} with {counselorId: self, isSuperAdmin: true}
+      // and self-grant admin. Both rules are now collapsed into this single gate.
+      //
+      // Privileged fields are written ONLY by the server (Admin SDK, which bypasses rules):
+      //   - counselee provisioning + counselor binding -> api/create-user.js
+      //   - admin status -> Firebase custom claims (not this document at all)
+      // The three flag fields are allowed at their HARMLESS value only, because public
+      // signup legitimately writes them false (App.jsx gates on approved === false).
+      allow create: if request.auth != null && request.auth.uid == userId
+        && !('role' in request.resource.data)
+        && !('counselorId' in request.resource.data)
+        && !('counseleeDocId' in request.resource.data)
+        && !('isAdmin' in request.resource.data)
+        && (!('isSuperAdmin' in request.resource.data) || request.resource.data.isSuperAdmin == false)
+        && (!('isCounselor' in request.resource.data) || request.resource.data.isCounselor == false)
+        && (!('approved' in request.resource.data) || request.resource.data.approved == false);
+
+      // DELETE: no client may delete a user profile. Self-delete previously allowed a
+      // delete-then-recreate cycle that stripped `approved: false` and escaped the pending
+      // gate; the counselor-delete rule had the same counselorId-matching weakness as the
+      // old create rule. Deletion now runs server-side only (api/delete-user.js), which
+      // verifies the target really is the caller's counselee.
       // Owner can UPDATE their own profile — EXCEPT the fields that grant cross-user data
       // access or elevate role. Those are set only at creation / via the Admin SDK.
       // (C-2: blocks a user from re-pointing counselorId/counseleeDocId at a victim to
@@ -24,9 +50,12 @@ service cloud.firestore {
       // Counselees can read their counselor's profile (for contact info)
       allow read: if request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counselorId == userId;
-      // Counselors can create/delete profiles for their counselees
-      allow create: if request.auth != null && request.resource.data.counselorId == request.auth.uid;
-      allow delete: if request.auth != null && resource.data.counselorId == request.auth.uid;
+      // (REMOVED 2026-08-03) The counselor create/delete rules lived here. Both keyed off
+      // `counselorId == request.auth.uid`, which the caller sets themselves — so they
+      // granted self-service create (with any fields) and delete of any doc you could match.
+      // Counselor-initiated provisioning and deletion are now server-side:
+      //   create -> api/create-user.js (action:'provision' / 'accept-counselor-invite')
+      //   delete -> api/delete-user.js (verifies the target IS the caller's counselee)
       // Allow authenticated users to search for other users (for accountability partners)
       // TODO(security H-3): still exposes all profile PII to any account — replace with a
       // minimal directory doc / server search. Deferred; not the content-read breach.

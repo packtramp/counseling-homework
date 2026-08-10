@@ -1907,9 +1907,9 @@ export default function UnifiedDashboard() {
         const emailKey = selectedCounselee.email.toLowerCase().replace(/[.]/g, '_');
         await deleteDoc(doc(db, 'counseleeLinks', emailKey));
       }
-      if (selectedCounselee.uid) {
-        await deleteDoc(doc(db, 'users', selectedCounselee.uid));
-      }
+      // The counselee's user doc is deleted SERVER-SIDE by delete-user.js (which also
+      // verifies they are actually our counselee). The client no longer needs — and no
+      // longer has — permission to delete a user profile.
       setSelectedCounselee(null);
     } catch (error) {
       alert('Error deleting counselee');
