@@ -140,7 +140,12 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ success: true, token });
+    // SECURITY (8/3): the token is the partnerRequests document id — a capability. It was
+    // previously returned here, handing any caller the key to the request they had just
+    // created. The client never read it (UnifiedDashboard only checks response.ok), so
+    // withholding it costs nothing. Responding happens in-app, where the server verifies
+    // the caller IS the request's target.
+    return res.status(200).json({ success: true });
   } catch (error) {
     console.error('Send partner request error:', error);
     return res.status(500).json({ error: error.message || 'Failed to send partner request' });
