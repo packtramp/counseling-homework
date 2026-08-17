@@ -935,14 +935,18 @@ export default function SettingsPage() {
   }
 
   if (activeView === 'vacation') {
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    // Build the date string from LOCAL parts. toISOString() converts to UTC first, so for
+    // anyone behind UTC it rolls to "tomorrow" during the evening and silently shifts
+    // the earliest selectable day.
+    const pad = (n) => String(n).padStart(2, '0');
+    const localDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-    const minEnd = vacationStart
-      ? new Date(new Date(vacationStart).getTime() + 86400000).toISOString().split('T')[0]
-      : tomorrowStr;
+    // Vacation may start TODAY — you often set it the morning you leave. (Was `tomorrow`,
+    // which made a same-day departure impossible to enter.)
+    const todayStr = localDateStr(new Date());
+
+    // End may equal start: a one-day vacation is legitimate.
+    const minEnd = vacationStart || todayStr;
 
     const existingStart = userProfile?.vacationStart?.toDate?.() || (userProfile?.vacationStart?.seconds ? new Date(userProfile.vacationStart.seconds * 1000) : null);
     const existingEnd = userProfile?.vacationEnd?.toDate?.() || (userProfile?.vacationEnd?.seconds ? new Date(userProfile.vacationEnd.seconds * 1000) : null);
@@ -1030,10 +1034,11 @@ export default function SettingsPage() {
             <input
               type="date"
               value={vacationStart || (existingStart && !vacationStart ? '' : vacationStart)}
-              min={tomorrowStr}
+              min={todayStr}
               onChange={(e) => {
                 setVacationStart(e.target.value);
-                if (vacationEnd && e.target.value >= vacationEnd) {
+                // Only clear the end date if it's now BEFORE the start — same-day is valid.
+                if (vacationEnd && e.target.value > vacationEnd) {
                   setVacationEnd('');
                 }
               }}
