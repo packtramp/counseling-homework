@@ -25,7 +25,7 @@ export async function runDailyChores(now = new Date()) {
   });
   if (!shouldRun) return { ran: false, reason: 'already-ran-today' };
 
-  // ───── VACATION AUTO-COMPLETE (yesterday + today, in Chicago) ─────
+  // ───── VACATION AUTO-COMPLETE (YESTERDAY only, in Chicago — today stays yours) ─────
   const chicagoNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
   const yesterdayChicago = new Date(chicagoNow); yesterdayChicago.setDate(yesterdayChicago.getDate() - 1);
   const yesterdayDateStr = `${yesterdayChicago.getFullYear()}-${String(yesterdayChicago.getMonth() + 1).padStart(2, '0')}-${String(yesterdayChicago.getDate()).padStart(2, '0')}`;
@@ -44,7 +44,11 @@ export async function runDailyChores(now = new Date()) {
     if (!u.vacationStart || !u.vacationEnd) continue;
     const vs = u.vacationStart.toDate ? u.vacationStart.toDate() : new Date(u.vacationStart);
     const ve = u.vacationEnd.toDate ? u.vacationEnd.toDate() : new Date(u.vacationEnd);
-    if (now < vs || now > ve) continue;
+    // We now backfill YESTERDAY only (see below), so this must also run on the morning
+    // AFTER the vacation ends — otherwise the final vacation day would never be topped up.
+    const yesterdayInVacation = yesterdayLate >= vs && yesterdayMidnight <= ve;
+    const todayInVacation = now >= vs && now <= ve;
+    if (!yesterdayInVacation && !todayInVacation) continue;
     const cId = u.counselorId || userDoc.id, ceId = u.counseleeDocId || userDoc.id;
     const hwPath = `counselors/${cId}/counselees/${ceId}/homework`;
     const titles = [];
@@ -58,14 +62,15 @@ export async function runDailyChores(now = new Date()) {
       // Days with partial real work get topped up but NOT stamped as auto (a
       // stamped day erases the streak credit the user's real work earned).
       const addMs = [], dateStrs = [];
-      if (yesterdayMidnight.getTime() >= new Date(vs.toLocaleString('en-US', { timeZone: 'America/Chicago' })).setHours(0,0,0,0)) {
+      if (yesterdayInVacation && yesterdayMidnight.getTime() >= new Date(vs.toLocaleString('en-US', { timeZone: 'America/Chicago' })).setHours(0,0,0,0)) {
         const y = planDayTopUp(hw, countOn(yesterdayMidnight), yesterdayTimestamp.toMillis());
         addMs.push(...y.addMs);
         if (y.stampAuto) dateStrs.push(yesterdayDateStr);
       }
-      const t = planDayTopUp(hw, countOn(todayMidnight), now.getTime());
-      addMs.push(...t.addMs);
-      if (t.stampAuto) dateStrs.push(todayDateStr);
+      // TODAY is deliberately NOT topped up (Roby, 8/18): vacation means homework is not
+      // REQUIRED, but you may still choose to do it. Auto-completing the current day left
+      // nothing to check off — the choice was taken away before he ever opened the app.
+      // Whatever he skips today gets backfilled by tomorrow's run, so nothing is lost.
       if (addMs.length) {
         const updates = { completions: admin.firestore.FieldValue.arrayUnion(...addMs.map((ms) => admin.firestore.Timestamp.fromMillis(ms))) };
         if (dateStrs.length) updates.autoCompletedDates = admin.firestore.FieldValue.arrayUnion(...dateStrs);
