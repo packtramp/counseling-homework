@@ -2,32 +2,23 @@ import { useState } from 'react';
 import RichTextEditor from './RichTextEditor';
 import { getCompletionsForDay, isCompletedToday, getTodayProgress, getWeeklyProgress, isItemBehind, isRequiredToday, dayBucket, getAssignedDate } from '../utils/homeworkHelpers';
 
-const ymdOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-// How far back a missed day can still be claimed. Was effectively 1 (yesterday only),
-// which is how Roby lost a day: it took him more than a day to surface the problem while
-// travelling, and by then the only control that could fix it had moved out of reach.
-export const CLAIM_WINDOW_DAYS = 7;
-
-// The state of one past day for a given item:
-//   'mine' — the user's own work; nothing to do
-//   'auto' — filled by the vacation job; claimable (counts for total, NOT for streak)
-//   'empty' — nothing logged; claimable
-const dayState = (item, d) => {
-  const done = getCompletionsForDay(item.completions || [], d) > 0;
-  if (!done) return 'empty';
-  return (item.autoCompletedDates || []).includes(ymdOf(dayBucket(d))) ? 'auto' : 'mine';
+// Was yesterday filled in by the VACATION auto-complete rather than by the user?
+// On a vacation day, real work increments the streak but an auto-only day merely holds
+// it (homeworkHelpers.calculateAPStreak). So if the 3am job filled yesterday in, work the
+// user actually did is unclaimable — and "I forgot yesterday" is exactly the tool for it.
+const yesterdayWasAutoCompleted = (item) => {
+  const y = dayBucket(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  const dateStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+  return (item.autoCompletedDates || []).includes(dateStr);
 };
 
-// Past days (most recent first) the user could still claim, excluding today.
-const claimableDays = (item) => {
-  const out = [];
-  for (let i = 1; i <= CLAIM_WINDOW_DAYS; i++) {
-    const d = dayBucket(new Date(Date.now() - i * 24 * 60 * 60 * 1000));
-    const st = dayState(item, d);
-    if (st !== 'mine') out.push({ date: d, state: st });
-  }
-  return out;
+// Hide "I forgot yesterday" once yesterday genuinely has the user's own work on it —
+// but NOT when the only thing there is an auto-fill (see above).
+const hasYesterdayCompletion = (item) => {
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  if (getCompletionsForDay(item.completions || [], y) === 0) return false;
+  return !yesterdayWasAutoCompleted(item);
 };
 
 /**
@@ -68,8 +59,6 @@ export default function HomeworkTile({
   onForgotYesterday
 }) {
   const [homeworkTab, setHomeworkTab] = useState('current');
-  // Which item's 'I forgot a day' picker is open (null = none)
-  const [openClaimFor, setOpenClaimFor] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newHomework, setNewHomework] = useState({ title: '', description: '', timesPerWeek: 7, recurring: true });
   const [editingHomework, setEditingHomework] = useState(null);
@@ -638,33 +627,14 @@ export default function HomeworkTile({
                         </span>
                       )}
                     </span>
-                    {onForgotYesterday && !isLinkedItem && claimableDays(item).length > 0 && (
-                      openClaimFor === item.id ? (
-                        <div className="claim-day-picker" onClick={(e) => e.stopPropagation()}>
-                          <span className="claim-day-label">Did you do this on:</span>
-                          {claimableDays(item).map(({ date, state }) => (
-                            <button
-                              key={date.getTime()}
-                              type="button"
-                              className={`claim-day-chip ${state}`}
-                              title={state === 'auto' ? 'Filled in automatically while you were on vacation — tap to claim it as yours' : 'Nothing logged — tap to add it'}
-                              onClick={(e) => { e.stopPropagation(); onForgotYesterday(item, date); setOpenClaimFor(null); }}
-                            >
-                              {date.toLocaleDateString(undefined, { weekday: 'short' })}
-                              {state === 'auto' && <span className="claim-auto-dot" title="auto-filled">•</span>}
-                            </button>
-                          ))}
-                          <button type="button" className="claim-day-close" onClick={(e) => { e.stopPropagation(); setOpenClaimFor(null); }}>×</button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="forgot-yesterday-btn"
-                          onClick={(e) => { e.stopPropagation(); setOpenClaimFor(item.id); }}
-                        >
-                          I forgot a day
-                        </button>
-                      )
+                    {onForgotYesterday && !isLinkedItem && !hasYesterdayCompletion(item) && (
+                      <button
+                        type="button"
+                        className="forgot-yesterday-btn"
+                        onClick={(e) => { e.stopPropagation(); onForgotYesterday(item); }}
+                      >
+                        I forgot yesterday
+                      </button>
                     )}
                     {onCancel && isLinkedItem && (
                       <button

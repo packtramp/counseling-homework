@@ -1162,30 +1162,24 @@ export default function UnifiedDashboard() {
     }
   };
 
-  // Claim a past day. `targetDay` is any day-bucket within the claim window; it defaults
-  // to yesterday so existing callers keep working.
-  //
-  // Why a window rather than just yesterday (Roby, 8/22): he lost a day on vacation
-  // because the auto-fill hid the control, and by the time we had diagnosed it — over a
-  // day later, while travelling — yesterday-only meant the day was permanently
-  // unclaimable and he had to ask me to edit the database by hand.
-  const handleMyForgotYesterday = async (homeworkItem, targetDay = null) => {
+  const handleMyForgotYesterday = async (homeworkItem) => {
     if (completingId) return;
     if (homeworkItem.linkedThinkListId || homeworkItem.linkedJournalingId) return;
     setCompletingId(homeworkItem.id);
     try {
       const basePath = getMyBasePath();
-      const dayB = targetDay ? dayBucket(targetDay) : dayBucket(new Date(Date.now() - 24 * 60 * 60 * 1000));
-      // Stamp the completion late in that day so it buckets to the right one.
-      const y = new Date(dayB.getFullYear(), dayB.getMonth(), dayB.getDate(), 23, 59, 0, 0);
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      y.setHours(23, 59, 0, 0);
 
-      // If the vacation job auto-filled this day, claiming it means clearing that auto
-      // stamp — the streak check is PER ITEM (calculateAPStreak): while the date sits in
-      // this item's autoCompletedDates, none of its completions that day count as real
-      // work, so adding another completion alone would change nothing.
-      const yStr = `${dayB.getFullYear()}-${String(dayB.getMonth() + 1).padStart(2, '0')}-${String(dayB.getDate()).padStart(2, '0')}`;
+      // If the vacation job auto-filled yesterday, claiming it means clearing that
+      // auto stamp — the streak check is PER ITEM (calculateAPStreak): while the date
+      // sits in this item's autoCompletedDates, none of its completions that day count
+      // as real work, so adding another completion alone would change nothing.
+      const yBucket = dayBucket(new Date(Date.now() - 24 * 60 * 60 * 1000));
+      const yStr = `${yBucket.getFullYear()}-${String(yBucket.getMonth() + 1).padStart(2, '0')}-${String(yBucket.getDate()).padStart(2, '0')}`;
       const wasAuto = (homeworkItem.autoCompletedDates || []).includes(yStr);
-      const alreadyLogged = getCompletionsForDay(homeworkItem.completions || [], dayB) > 0;
+      const alreadyLogged = getCompletionsForDay(homeworkItem.completions || [], yBucket) > 0;
 
       const update = {};
       // Don't stack a duplicate on top of the auto-fill — the day is already counted.
@@ -1198,7 +1192,7 @@ export default function UnifiedDashboard() {
         action: 'homework_completed_backdated',
         actor: 'self',
         actorName: myData?.name || 'Me',
-        details: `Backdated "${homeworkItem.title}" to ${yStr}${wasAuto ? ' (claimed from vacation auto-complete)' : ''}`,
+        details: `Backdated "${homeworkItem.title}" to yesterday${wasAuto ? ' (claimed from vacation auto-complete)' : ''}`,
         timestamp: serverTimestamp()
       });
     } finally {
