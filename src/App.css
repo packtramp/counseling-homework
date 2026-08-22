@@ -9149,3 +9149,22 @@ button.counselor-check-indicator.clickable-check:active {
 .counselor-invite-actions .invite-accept:hover:not(:disabled){background:#1a365d;}
 .counselor-invite-actions .invite-decline{background:#e2e8f0;color:#4a5568;}
 .counselor-invite-actions .invite-decline:hover:not(:disabled){background:#cbd5e0;}
+
+/* "I forgot a day" picker (8/22). The old control only reached YESTERDAY, so a day that
+   went unnoticed for ~24h became permanently unclaimable — which is exactly how Roby lost
+   a vacation day and had to have the database edited by hand. Now the last 7 days. */
+.claim-day-picker{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:6px;}
+.claim-day-label{font-size:.72rem;color:var(--color-text-muted,#718096);margin-right:2px;}
+.claim-day-chip{
+  position:relative;border:1px solid #cbd5e0;background:#fff;color:#4a5568;
+  border-radius:12px;padding:3px 9px;font-size:.72rem;font-weight:600;cursor:pointer;line-height:1.2;
+}
+.claim-day-chip:hover{background:#ebf8ff;border-color:#90cdf4;}
+/* Auto-filled days are the ones worth claiming — they hold the streak but don't grow it. */
+.claim-day-chip.auto{border-color:#f6ad55;background:#fffaf0;color:#975a16;}
+.claim-day-chip.auto:hover{background:#feebc8;}
+.claim-auto-dot{margin-left:3px;font-size:.9rem;line-height:0;vertical-align:middle;}
+.claim-day-close{
+  border:none;background:transparent;color:#a0aec0;font-size:1rem;cursor:pointer;padding:0 4px;line-height:1;
+}
+.claim-day-close:hover{color:#4a5568;}

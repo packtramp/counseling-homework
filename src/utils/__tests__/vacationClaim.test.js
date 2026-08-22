@@ -49,3 +49,21 @@ describe('vacation streak: real work counts, auto-fill only holds', () => {
       .toBe(calculateAPStreak([itemFor([1, 2], [])], profile));
   });
 });
+
+/**
+ * The claim WINDOW. Roby lost a vacation day because the only control that could fix it
+ * reached exactly one day back: by the time the problem was diagnosed (>24h later, while
+ * travelling) the day was permanently unclaimable and the database had to be edited by
+ * hand. These pin the widened window so it cannot silently shrink again.
+ */
+import { CLAIM_WINDOW_DAYS } from '../../components/HomeworkTile';
+
+describe('claim window', () => {
+  it('reaches far enough back to survive a day of not noticing', () => {
+    expect(CLAIM_WINDOW_DAYS).toBeGreaterThanOrEqual(7);
+  });
+
+  it('a day 2 back — the exact case that was lost — is inside the window', () => {
+    expect(2).toBeLessThanOrEqual(CLAIM_WINDOW_DAYS);
+  });
+});
