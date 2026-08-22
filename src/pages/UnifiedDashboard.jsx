@@ -23,7 +23,7 @@ import JournalingPage from '../components/JournalingPage';
 import AccountabilityModal from '../components/AccountabilityModal';
 import AccountabilityPartnersTile from '../components/AccountabilityPartnersTile';
 import AccountabilityPartnersModal from '../components/AccountabilityPartnersModal';
-import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateTotalDays, isOnVacation } from '../utils/homeworkHelpers';
+import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateTotalDays, isOnVacation, dayBucket, getCompletionsForDay } from '../utils/homeworkHelpers';
 import { getLinkedSpouse as getLinkedSpouseUtil } from '../utils/jointSession';
 import VacationBanner from '../components/VacationBanner';
 import OnboardingModal from '../components/OnboardingModal';
@@ -1171,14 +1171,28 @@ export default function UnifiedDashboard() {
       const y = new Date();
       y.setDate(y.getDate() - 1);
       y.setHours(23, 59, 0, 0);
-      await updateDoc(doc(db, `${basePath}/homework`, homeworkItem.id), {
-        completions: arrayUnion(Timestamp.fromDate(y))
-      });
+
+      // If the vacation job auto-filled yesterday, claiming it means clearing that
+      // auto stamp — the streak check is PER ITEM (calculateAPStreak): while the date
+      // sits in this item's autoCompletedDates, none of its completions that day count
+      // as real work, so adding another completion alone would change nothing.
+      const yBucket = dayBucket(new Date(Date.now() - 24 * 60 * 60 * 1000));
+      const yStr = `${yBucket.getFullYear()}-${String(yBucket.getMonth() + 1).padStart(2, '0')}-${String(yBucket.getDate()).padStart(2, '0')}`;
+      const wasAuto = (homeworkItem.autoCompletedDates || []).includes(yStr);
+      const alreadyLogged = getCompletionsForDay(homeworkItem.completions || [], yBucket) > 0;
+
+      const update = {};
+      // Don't stack a duplicate on top of the auto-fill — the day is already counted.
+      if (!alreadyLogged) update.completions = arrayUnion(Timestamp.fromDate(y));
+      if (wasAuto) update.autoCompletedDates = (homeworkItem.autoCompletedDates || []).filter(d => d !== yStr);
+      if (Object.keys(update).length) {
+        await updateDoc(doc(db, `${basePath}/homework`, homeworkItem.id), update);
+      }
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'homework_completed_backdated',
         actor: 'self',
         actorName: myData?.name || 'Me',
-        details: `Backdated "${homeworkItem.title}" to yesterday`,
+        details: `Backdated "${homeworkItem.title}" to yesterday${wasAuto ? ' (claimed from vacation auto-complete)' : ''}`,
         timestamp: serverTimestamp()
       });
     } finally {

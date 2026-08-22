@@ -2,10 +2,23 @@ import { useState } from 'react';
 import RichTextEditor from './RichTextEditor';
 import { getCompletionsForDay, isCompletedToday, getTodayProgress, getWeeklyProgress, isItemBehind, isRequiredToday, dayBucket, getAssignedDate } from '../utils/homeworkHelpers';
 
+// Was yesterday filled in by the VACATION auto-complete rather than by the user?
+// On a vacation day, real work increments the streak but an auto-only day merely holds
+// it (homeworkHelpers.calculateAPStreak). So if the 3am job filled yesterday in, work the
+// user actually did is unclaimable — and "I forgot yesterday" is exactly the tool for it.
+const yesterdayWasAutoCompleted = (item) => {
+  const y = dayBucket(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  const dateStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+  return (item.autoCompletedDates || []).includes(dateStr);
+};
+
+// Hide "I forgot yesterday" once yesterday genuinely has the user's own work on it —
+// but NOT when the only thing there is an auto-fill (see above).
 const hasYesterdayCompletion = (item) => {
   const y = new Date();
   y.setDate(y.getDate() - 1);
-  return getCompletionsForDay(item.completions || [], y) > 0;
+  if (getCompletionsForDay(item.completions || [], y) === 0) return false;
+  return !yesterdayWasAutoCompleted(item);
 };
 
 /**
