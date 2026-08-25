@@ -30,7 +30,13 @@ export async function runDailyChores(now = new Date()) {
   const yesterdayChicago = new Date(chicagoNow); yesterdayChicago.setDate(yesterdayChicago.getDate() - 1);
   const yesterdayDateStr = `${yesterdayChicago.getFullYear()}-${String(yesterdayChicago.getMonth() + 1).padStart(2, '0')}-${String(yesterdayChicago.getDate()).padStart(2, '0')}`;
   const yesterdayMidnight = new Date(yesterdayChicago); yesterdayMidnight.setHours(0, 0, 0, 0);
-  const yesterdayLate = new Date(yesterdayChicago); yesterdayLate.setHours(23, 59, 0, 0);
+  // Stamp the backfill at NOON, not 23:59. The client buckets completions on the DEVICE's
+  // clock (minus the 3-hour rollover), so a near-midnight Central stamp lands on the FOLLOWING
+  // day for anyone far enough east — 23:59 Central is 06:59 in Ljubljana, which buckets to the
+  // next day. That made a traveller's TODAY arrive already complete, with every item in Done and
+  // nothing to check off (Roby, in Slovenia, 8/24). Noon is ~11 hours from either bucket edge,
+  // so it resolves to the intended day across every timezone a trip realistically reaches.
+  const yesterdayLate = new Date(yesterdayChicago); yesterdayLate.setHours(12, 0, 0, 0);
   const yesterdayTimestamp = admin.firestore.Timestamp.fromMillis(now.getTime() - (chicagoNow.getTime() - yesterdayLate.getTime()));
   const chicagoDateStr = now.toLocaleDateString('en-US', { timeZone: 'America/Chicago' });
   const [vMonth, vDay, vYear] = chicagoDateStr.split('/');
