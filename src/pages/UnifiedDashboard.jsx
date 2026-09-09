@@ -23,7 +23,7 @@ import JournalingPage from '../components/JournalingPage';
 import AccountabilityModal from '../components/AccountabilityModal';
 import AccountabilityPartnersTile from '../components/AccountabilityPartnersTile';
 import AccountabilityPartnersModal from '../components/AccountabilityPartnersModal';
-import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateTotalDays, isOnVacation, dayBucket, getCompletionsForDay } from '../utils/homeworkHelpers';
+import { isItemBehind, formatPhone, calculateAccountabilityStatus, calculateAPStreak, calculateTotalDays, isOnVacation, dayBucket, getCompletionsForDay, shadowDayString } from '../utils/homeworkHelpers';
 import { getLinkedSpouse as getLinkedSpouseUtil } from '../utils/jointSession';
 import VacationBanner from '../components/VacationBanner';
 import OnboardingModal from '../components/OnboardingModal';
@@ -1148,7 +1148,8 @@ export default function UnifiedDashboard() {
     try {
       const basePath = getMyBasePath();
       await updateDoc(doc(db, `${basePath}/homework`, homeworkItem.id), {
-        completions: arrayUnion(Timestamp.now())
+        completions: arrayUnion(Timestamp.now()),
+        completionsLocal: arrayUnion(shadowDayString())   // SHADOW (Angle A) — nothing reads this yet
       });
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'homework_completed',
@@ -1183,7 +1184,10 @@ export default function UnifiedDashboard() {
 
       const update = {};
       // Don't stack a duplicate on top of the auto-fill — the day is already counted.
-      if (!alreadyLogged) update.completions = arrayUnion(Timestamp.fromDate(y));
+      if (!alreadyLogged) {
+        update.completions = arrayUnion(Timestamp.fromDate(y));
+        update.completionsLocal = arrayUnion(yStr);   // SHADOW (Angle A): the backdated day, not today
+      }
       if (wasAuto) update.autoCompletedDates = (homeworkItem.autoCompletedDates || []).filter(d => d !== yStr);
       if (Object.keys(update).length) {
         await updateDoc(doc(db, `${basePath}/homework`, homeworkItem.id), update);
@@ -1306,7 +1310,8 @@ export default function UnifiedDashboard() {
     const basePath = getMyBasePath();
     const updatedCompletions = homeworkItem.completions.slice(0, -1);
     await updateDoc(doc(db, `${basePath}/homework`, homeworkItem.id), {
-      completions: updatedCompletions
+      completions: updatedCompletions,
+      completionsLocal: (homeworkItem.completionsLocal || []).slice(0, -1)   // SHADOW: keep it paired
     });
     await addDoc(collection(db, `${basePath}/activityLog`), {
       action: 'homework_unchecked',
@@ -1841,7 +1846,8 @@ export default function UnifiedDashboard() {
     try {
       const basePath = `counselors/${user.uid}/counselees/${selectedCounselee.id}`;
       await updateDoc(doc(db, `${basePath}/homework`, homeworkItem.id), {
-        completions: arrayUnion(Timestamp.now())
+        completions: arrayUnion(Timestamp.now()),
+        completionsLocal: arrayUnion(shadowDayString())   // SHADOW (Angle A) — nothing reads this yet
       });
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'homework_completed',
@@ -1861,7 +1867,8 @@ export default function UnifiedDashboard() {
     const basePath = `counselors/${user.uid}/counselees/${selectedCounselee.id}`;
     const updatedCompletions = homeworkItem.completions.slice(0, -1);
     await updateDoc(doc(db, `${basePath}/homework`, homeworkItem.id), {
-      completions: updatedCompletions
+      completions: updatedCompletions,
+      completionsLocal: (homeworkItem.completionsLocal || []).slice(0, -1)   // SHADOW: keep it paired
     });
     await addDoc(collection(db, `${basePath}/activityLog`), {
       action: 'homework_unchecked',

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db } from '../config/firebase';
 import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp, increment, arrayUnion, Timestamp } from 'firebase/firestore';
+import { shadowDayString } from '../utils/homeworkHelpers';
 
 export default function ThinkListPage({
   userProfile,
@@ -156,7 +157,8 @@ export default function ThinkListPage({
     try {
       const hwRef = doc(db, `${basePath}/homework`, linkedHw.id);
       await updateDoc(hwRef, {
-        completions: arrayUnion(Timestamp.now())
+        completions: arrayUnion(Timestamp.now()),
+        completionsLocal: arrayUnion(shadowDayString())   // SHADOW (Angle A) — nothing reads this yet
       });
       await addDoc(collection(db, `${basePath}/activityLog`), {
         action: 'homework_completed',

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { db } from '../config/firebase';
 import { collection, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, Timestamp } from 'firebase/firestore';
 import RichTextEditor from './RichTextEditor';
-import { dayBucket } from '../utils/homeworkHelpers';
+import { dayBucket, shadowDayString } from '../utils/homeworkHelpers';
 
 export default function JournalingPage({
   userProfile,
@@ -224,7 +224,8 @@ export default function JournalingPage({
         try {
           const hwRef = doc(db, `${basePath}/homework`, linkedHw.id);
           await updateDoc(hwRef, {
-            completions: arrayUnion(Timestamp.now())
+            completions: arrayUnion(Timestamp.now()),
+            completionsLocal: arrayUnion(shadowDayString())   // SHADOW (Angle A) — nothing reads this yet
           });
           await addDoc(collection(db, `${basePath}/activityLog`), {
             action: 'homework_completed',
@@ -398,7 +399,8 @@ export default function JournalingPage({
             });
             if (!alreadyDoneToday) {
               await updateDoc(hwRef, {
-                completions: arrayUnion(Timestamp.now())
+                completions: arrayUnion(Timestamp.now()),
+                completionsLocal: arrayUnion(shadowDayString())   // SHADOW (Angle A) — nothing reads this yet
               });
               await addDoc(collection(db, `${basePath}/activityLog`), {
                 action: 'homework_completed',

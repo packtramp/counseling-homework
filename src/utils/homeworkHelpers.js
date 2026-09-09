@@ -29,6 +29,18 @@ export const DAY_ROLLOVER_HOUR = 3;
  * Returns the calendar day a moment "belongs to" under the rollover rule.
  * (Date at local midnight of that day.) DST-safe: subtracts ms in UTC.
  */
+/**
+ * SHADOW (Angle A, added 2026-09-09): the frozen local day a tap belongs to — device-local
+ * date with the 3am rollover baked in, as "YYYY-MM-DD". Written at tap time into a parallel
+ * `completionsLocal` field that NOTHING reads yet. It captures the one fact a bare timestamp
+ * loses: what day the user's own clock said it was when they tapped. Lets us validate Angle A
+ * on real travel data before switching any logic to use it. See docs/ANGLE-A-SHADOW-SPEC.
+ */
+export const shadowDayString = (date = new Date()) => {
+  const s = new Date(date.getTime() - DAY_ROLLOVER_HOUR * 60 * 60 * 1000);
+  return `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, '0')}-${String(s.getDate()).padStart(2, '0')}`;
+};
+
 export const dayBucket = (d) => {
   const shifted = new Date(d.getTime() - DAY_ROLLOVER_HOUR * 60 * 60 * 1000);
   return toMidnight(shifted);
