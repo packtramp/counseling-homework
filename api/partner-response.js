@@ -140,6 +140,25 @@ async function handleSmsReply(req, res) {
   const digits = String(from).replace(/\D/g, '');
   const last10 = digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits;
   const pretty = last10.length === 10 ? `(${last10.slice(0, 3)}) ${last10.slice(3, 6)}-${last10.slice(6)}` : from;
+
+  // ── Care For One Another hand-off (9/12/26). The sister app shares this Twilio number. If the
+  // sender is one of its people or helpers, Care routes the text to that person's leaders + the
+  // signed-up helper (nothing auto-cancels) and tells us what to text back. Otherwise fall
+  // through to the broadcast-reply flow below. Fail-open: any error → normal flow.
+  if (process.env.CARE_SMS_URL && process.env.CARE_SMS_SECRET) {
+    try {
+      const cr = await fetch(process.env.CARE_SMS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Care-Secret': process.env.CARE_SMS_SECRET },
+        body: JSON.stringify({ from, body }),
+      });
+      const cd = await cr.json().catch(() => ({}));
+      if (cr.ok && cd.handled) {
+        const reply = String(cd.reply || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+        return twiml(reply ? `<Message>${reply}</Message>` : '');
+      }
+    } catch (e) { console.error('care hand-off failed:', e.message); }
+  }
   const looksLikeOptOut = /\b(don'?t add me|remove me|unsubscribe|opt.?out|take me off|no thanks?)\b/i.test(body);
 
   // Best-effort: match the sender's number to a contact name + group (across all groups),
