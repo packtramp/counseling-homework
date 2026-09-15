@@ -948,12 +948,31 @@ export default function SettingsPage() {
     // End may equal start: a one-day vacation is legitimate.
     const minEnd = vacationStart || todayStr;
 
+    // Cap vacations at 15 days (Roby, 9/15). A fat-fingered year once set an end date of
+    // 2233, which auto-completed a counselee's homework daily for ~2 months. Keeping a
+    // vacation going now takes deliberate re-adding, and a runaway date is impossible.
+    const MAX_VACATION_DAYS = 15;
+    const addDays = (str, n) => {
+      const [y, m, d] = str.split('-').map(Number);
+      return localDateStr(new Date(y, m - 1, d + n));
+    };
+    const maxEnd = vacationStart ? addDays(vacationStart, MAX_VACATION_DAYS - 1) : undefined;
+
     const existingStart = userProfile?.vacationStart?.toDate?.() || (userProfile?.vacationStart?.seconds ? new Date(userProfile.vacationStart.seconds * 1000) : null);
     const existingEnd = userProfile?.vacationEnd?.toDate?.() || (userProfile?.vacationEnd?.seconds ? new Date(userProfile.vacationEnd.seconds * 1000) : null);
     const isOnVacation = existingStart && existingEnd && new Date() >= existingStart && new Date() <= existingEnd;
 
     const handleSetVacation = async () => {
       if (!vacationStart || !vacationEnd) return;
+      // Enforce the cap here too — the date input's `max` is only a UI hint; the year
+      // field is still typeable, which is exactly how the 2233 date got in.
+      const spanDays = Math.round(
+        (new Date(vacationEnd + 'T00:00:00') - new Date(vacationStart + 'T00:00:00')) / 86400000
+      ) + 1;
+      if (spanDays > MAX_VACATION_DAYS || spanDays < 1) {
+        alert(`Vacations are capped at ${MAX_VACATION_DAYS} days. Set a shorter one — when it ends you can add another.`);
+        return;
+      }
       setVacationSaving(true);
       try {
         const userRef = doc(db, 'users', user.uid);
@@ -1052,6 +1071,7 @@ export default function SettingsPage() {
               type="date"
               value={vacationEnd}
               min={minEnd}
+              max={maxEnd}
               onChange={(e) => setVacationEnd(e.target.value)}
               disabled={!vacationStart}
               style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid #cbd5e0', fontSize: '1rem' }}
