@@ -1180,7 +1180,12 @@ export default function UnifiedDashboard() {
       const yBucket = dayBucket(new Date(Date.now() - 24 * 60 * 60 * 1000));
       const yStr = `${yBucket.getFullYear()}-${String(yBucket.getMonth() + 1).padStart(2, '0')}-${String(yBucket.getDate()).padStart(2, '0')}`;
       const wasAuto = (homeworkItem.autoCompletedDates || []).includes(yStr);
-      const alreadyLogged = getCompletionsForDay(homeworkItem.completions || [], yBucket) > 0;
+      // BUG FIX (9/15): pass the raw yesterday date `y`, NOT `yBucket`. getCompletionsForDay
+      // buckets its argument itself, so handing it an already-bucketed midnight shifted the
+      // check a day earlier (dayBucket(Sep14 00:00) = Sep13). That made alreadyLogged read the
+      // day-BEFORE-yesterday, so for anyone with a good record the "I forgot" write silently
+      // no-op'd while still logging the activity entry — Roby clicked it repeatedly, nothing stuck.
+      const alreadyLogged = getCompletionsForDay(homeworkItem.completions || [], y) > 0;
 
       const update = {};
       // Don't stack a duplicate on top of the auto-fill — the day is already counted.
