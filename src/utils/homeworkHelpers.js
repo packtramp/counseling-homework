@@ -10,7 +10,19 @@
  * Critical for week-boundary math — without this, homework assigned at 7pm
  * creates week boundaries at 7pm, causing completions to leak across weeks.
  */
-const toMidnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+// The timezone that defines what "a day" is. Set from the user's PROFILE timezone at login
+// (see setDayTimezone in useAuth); null = fall back to the device clock. Anchoring here — the
+// ONE primitive every day calc funnels through (dayBucket, getAssignedDate, isDateOnVacation)
+// — is what keeps them consistent when the device clock differs from home (travel). Fixes the
+// streak tearing when Roby is abroad (Poland showed 12 vs a true 222). Added 2026-09-27.
+let dayTimezone = null;
+export const setDayTimezone = (tz) => { dayTimezone = tz || null; };
+export const getDayTimezone = () => dayTimezone;
+
+const toMidnight = (d) => {
+  const s = dayTimezone ? new Date(d.toLocaleString('en-US', { timeZone: dayTimezone })) : d;
+  return new Date(s.getFullYear(), s.getMonth(), s.getDate());
+};
 
 /**
  * Day rollover hour for the "what day does this happen on?" rule.

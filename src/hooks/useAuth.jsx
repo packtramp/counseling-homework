@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../config/firebase';
 import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { setDayTimezone } from '../utils/homeworkHelpers';
 
 const AuthContext = createContext();
 
@@ -20,6 +21,7 @@ export function AuthProvider({ children }) {
         // Fetch user profile from Firestore
         const profileDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
         if (profileDoc.exists()) {
+          setDayTimezone(profileDoc.data().timezone || null);  // anchor day math to home tz (travel-proof)
           setUserProfile(profileDoc.data());
         } else {
           // No profile yet — check whether someone has invited this email to be their counselee.
@@ -42,6 +44,7 @@ export function AuthProvider({ children }) {
             onboardingStep: 0
           };
           await setDoc(doc(db, 'users', firebaseUser.uid), baseProfile);
+          setDayTimezone(baseProfile.timezone || null);
           setUserProfile(baseProfile);
 
           if (linkDoc.exists()) {
@@ -59,6 +62,7 @@ export function AuthProvider({ children }) {
       } else {
         setUser(null);
         setUserProfile(null);
+        setDayTimezone(null);
         setPendingCounselorInvite(null);
       }
       setLoading(false);
@@ -93,7 +97,7 @@ export function AuthProvider({ children }) {
       throw new Error(e.error || 'Could not accept the invitation');
     }
     const fresh = await getDoc(doc(db, 'users', auth.currentUser.uid));
-    if (fresh.exists()) setUserProfile(fresh.data());
+    if (fresh.exists()) { setDayTimezone(fresh.data().timezone || null); setUserProfile(fresh.data()); }
     setPendingCounselorInvite(null);
   };
 
