@@ -16,12 +16,23 @@
 // — is what keeps them consistent when the device clock differs from home (travel). Fixes the
 // streak tearing when Roby is abroad (Poland showed 12 vs a true 222). Added 2026-09-27.
 let dayTimezone = null;
-export const setDayTimezone = (tz) => { dayTimezone = tz || null; };
+export const setDayTimezone = (tz) => { dayTimezone = tz || null; _midnightCache.clear(); };
 export const getDayTimezone = () => dayTimezone;
 
+// PERF (2026-10-03): toMidnight is called tens of thousands of times per render (every
+// completion x every day of the streak walk). toLocaleString per call made the whole app
+// crawl once the tz anchor shipped. Memoize by (instant ms | tz) — the same completion
+// timestamps are re-bucketed over and over, so the cache hit rate is ~100%.
+const _midnightCache = new Map();
 const toMidnight = (d) => {
+  const key = d.getTime() + '|' + (dayTimezone || '');
+  const hit = _midnightCache.get(key);
+  if (hit !== undefined) return new Date(hit);
   const s = dayTimezone ? new Date(d.toLocaleString('en-US', { timeZone: dayTimezone })) : d;
-  return new Date(s.getFullYear(), s.getMonth(), s.getDate());
+  const ms = new Date(s.getFullYear(), s.getMonth(), s.getDate()).getTime();
+  if (_midnightCache.size > 20000) _midnightCache.clear();
+  _midnightCache.set(key, ms);
+  return new Date(ms);
 };
 
 /**
