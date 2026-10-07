@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { useIdleLogout } from './hooks/useIdleLogout';
 import { auth } from './config/firebase';
 import Login from './pages/Login';
 import UnifiedDashboard from './pages/UnifiedDashboard';
@@ -159,6 +160,9 @@ function ProtectedRoute({ children }) {
 function AuthenticatedLayout({ children }) {
   const location = useLocation();
   const contentRef = useRef(null);
+
+  // Sign out after 30 min idle (on by default; user can disable in Settings).
+  useIdleLogout();
 
   useEffect(() => {
     if (contentRef.current) contentRef.current.scrollTop = 0;

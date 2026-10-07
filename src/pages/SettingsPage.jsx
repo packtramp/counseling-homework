@@ -48,6 +48,9 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // Security — idle auto sign-out (ON by default; stored as a disabled flag)
+  const [idleLogoutDisabled, setIdleLogoutDisabled] = useState(false);
+
   // Reminder preferences
   const [smsReminders, setSmsReminders] = useState(false);
   const [emailReminders, setEmailReminders] = useState(true);
@@ -125,6 +128,7 @@ export default function SettingsPage() {
         setPhone(data.phone || '');
         setSmsReminders(data.smsReminders ?? false);
         setEmailReminders(data.emailReminders ?? true);
+        setIdleLogoutDisabled(data.idleLogoutDisabled === true);
         setReminderSchedule(data.reminderSchedule || defaultSchedule);
         setTimezone(data.timezone || deviceZone);
         setSessionTemplate(data.sessionTemplate || '');
@@ -286,6 +290,22 @@ export default function SettingsPage() {
   const handleSignOut = async () => {
     await logout();
     navigate('/login');
+  };
+
+  // Toggle idle auto sign-out. Checked = protection ON (the default). Unchecking is a
+  // deliberate opt-out. We reload so the live idle timer (reads the profile from context)
+  // picks up the new setting immediately.
+  const handleToggleIdleLogout = async (e) => {
+    const protectionOn = e.target.checked;
+    const disabledFlag = !protectionOn;
+    setIdleLogoutDisabled(disabledFlag);
+    try {
+      await handleUpdateMyProfile({ idleLogoutDisabled: disabledFlag });
+      window.location.reload();
+    } catch (err) {
+      setIdleLogoutDisabled(!disabledFlag); // revert on failure
+      setError('Could not save that setting. Please try again.');
+    }
   };
 
   const openView = (view) => {
@@ -1338,6 +1358,31 @@ export default function SettingsPage() {
                 <span className="settings-row-label">Sign Out</span>
               </span>
             </button>
+          </div>
+        </div>
+
+        {/* SECURITY */}
+        <div className="settings-section">
+          <div className="settings-section-title">Security</div>
+          <div className="settings-group">
+            <div className="settings-row settings-row-static" style={{ display: 'block' }}>
+              <label className="checkbox-label" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', margin: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={!idleLogoutDisabled}
+                  onChange={handleToggleIdleLogout}
+                  style={{ width: 18, height: 18, marginTop: 2, flex: '0 0 auto' }}
+                />
+                <span>
+                  <span style={{ fontWeight: 600, display: 'block' }}>Auto sign-out when idle</span>
+                  <span style={{ fontSize: '0.85rem', color: '#718096', lineHeight: 1.5, display: 'block', marginTop: 2 }}>
+                    Signs you out after 30 minutes of no activity, so your counseling data isn&apos;t
+                    left open on an unattended device. On by default — turn it off only if you
+                    understand the risk.
+                  </span>
+                </span>
+              </label>
+            </div>
           </div>
         </div>
 
