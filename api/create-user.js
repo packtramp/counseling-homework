@@ -15,12 +15,12 @@ if (!admin.apps.length) {
     privateKey = privateKey.replace(/\\\\n/g, '\n');
   }
 
+  // Presence check only — NEVER log any part of the private key (it's the master
+  // credential to the whole database). Booleans are enough to diagnose a missing env var.
   console.log('Firebase Admin init check:', {
     hasProjectId: !!projectId,
     hasClientEmail: !!clientEmail,
-    hasPrivateKey: !!privateKey,
-    privateKeyStart: privateKey ? privateKey.substring(0, 50) : 'MISSING',
-    privateKeyLength: privateKey ? privateKey.length : 0
+    hasPrivateKey: !!privateKey
   });
 
   if (!projectId || !clientEmail || !privateKey) {
