@@ -16,7 +16,7 @@ export default function PrivacyPolicy() {
       </button>
 
       <h1 style={{ fontSize: '1.5rem', marginBottom: 4 }}>Privacy Policy</h1>
-      <p style={{ color: '#718096', fontSize: '0.85rem', marginTop: 0 }}>Last updated: February 13, 2026</p>
+      <p style={{ color: '#718096', fontSize: '0.85rem', marginTop: 0 }}>Last updated: October 8, 2026</p>
 
       <h2>1. Who We Are</h2>
       <p>
@@ -101,9 +101,13 @@ export default function PrivacyPolicy() {
         <li><strong>Resend</strong> for sending emails</li>
         <li><strong>Twilio</strong> for sending SMS text messages (only if you opt in to SMS reminders)</li>
       </ul>
-      <p>
-        We use HTTPS encryption for all data in transit, Firebase security rules to restrict data access, and token-based authentication for API endpoints.
-      </p>
+      <p>Security measures we rely on:</p>
+      <ul>
+        <li><strong>Encryption in transit:</strong> all data travels over HTTPS</li>
+        <li><strong>Encryption at rest:</strong> stored data is encrypted on Google's servers by default</li>
+        <li><strong>Access controls:</strong> Firebase security rules restrict each person's data to themselves, their counselor, and their approved accountability partners; API endpoints use token-based authentication</li>
+        <li><strong>Automatic sign-out:</strong> for your protection, you are signed out after 30 minutes of inactivity so your data isn't left open on an unattended device. This is on by default and can be turned off in Account Settings &rarr; Security</li>
+      </ul>
       <p>
         <strong>Honest disclaimer:</strong> This Service is built and maintained by one person, not a professional security team. While we use industry-standard tools and follow security best practices, no system is 100% secure. Please do not store information that would cause serious harm if exposed (see Terms of Service, Section 8).
       </p>
@@ -121,10 +125,11 @@ export default function PrivacyPolicy() {
       <h2>7. Your Rights</h2>
       <ul>
         <li><strong>Access:</strong> You can view all your data within the app at any time</li>
-        <li><strong>Download:</strong> A data export feature is planned (coming soon)</li>
+        <li><strong>Download:</strong> You can export all your data as a PDF at any time from Account Settings &rarr; Download My Data</li>
         <li><strong>Deletion:</strong> You can request account deletion by contacting us. Your counselor or an administrator can also delete your account, which removes all associated data</li>
         <li><strong>Correction:</strong> You can update your profile information in Account Settings</li>
         <li><strong>Revoke accountability:</strong> You can remove accountability partners at any time through the app</li>
+        <li><strong>Breach notification:</strong> if we ever become aware of a security breach affecting your personal data, we will notify affected users by email without undue delay</li>
       </ul>
 
       <h2>8. Cookies</h2>
