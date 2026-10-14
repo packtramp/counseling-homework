@@ -111,7 +111,7 @@ const SCALE = ['Never','Once a month','Once a week','Multiple times a week','Dai
 /* Fields NOT required (everything else shows a *). Flip any of these as we decide. */
 const OPTIONAL = new Set(['occupation','partnerName','anythingElse','spouseCell','spouseEmail','dateOfMarriage',
  'spouseWillingWhy','chronic','sleep','pcp','lastExam','examResults','upsets','medicationWhat','drugsExplain',
- 'dsm','arrestedExplain','checklistExplain','illnesses','physHealthOther','denom','attendance','religiousChanges','testimony',
+ 'dsm','arrestedExplain','physHealthOther','denom','attendance','religiousChanges','testimony',
  'hrsGames','hrsInternet','hrsSocial','checklistOther']);
 const reqMark = f => OPTIONAL.has(f.id) ? '' : ' <span class="req">*</span>';
 
@@ -217,24 +217,13 @@ const STEPS = [
     {id:'problem',type:'textarea',label:'What is your problem? (What brings you here?)'},
     {id:'doneAbout',type:'textarea',label:'What have you done about the problem?'},
   ]},
-  // From Geneva Bible Church's PDI ("The Issue") - added 10/14 per Roby.
-  {tag:'What brings you here', fields:[
-    {id:'thinkSelfOthers',type:'textarea',label:'What do you think about yourself in relation to the situation? What do you think of others in relation to the situation?'},
-    {id:'impactOthers',type:'textarea',label:'How does this issue impact others? What have others done to compound or alleviate the issue?'},
-  ]},
-  {tag:'What brings you here', fields:[
-    {id:'pressure',type:'textarea',label:'In general, when you are feeling pressure in life, how does it come out? What do you do?'},
-    {id:'fears',type:'textarea',label:'What do you fear, related to this situation? What are the emotions you are struggling with the most?'},
-  ]},
   {tag:'What brings you here', fields:[
     {id:'wantUsToDo',type:'textarea',label:'What do you want us to do?'},
-    {id:'wantMost',type:'textarea',label:'What do you want the most related to this situation?'},
     {id:'anythingElse',type:'textarea',label:'Is there any other information we should know?',help:'Optional.'},
   ]},
   {tag:'What brings you here', fields:[
     {id:'checklist',type:'checkbox',label:'Problem Checklist — select all that apply',options:CHECKLIST,grid:true},
     {id:'checklistOther',type:'text',label:'If "Other," explain',showIf:a=>inc(a,'checklist','Other')},
-    {id:'checklistExplain',type:'textarea',label:'Please feel free to explain any of the above checked boxes',showIf:a=>Array.isArray(a.checklist)&&a.checklist.length>0},
   ]},
 
   {tag:'Family', fields:[
@@ -250,8 +239,7 @@ const STEPS = [
   {tag:'Health Information', fields:[
     {id:'physHealth',type:'radio',label:'How would you rate your physical health?',options:['Very Good','Average','Declining','Other']},
     {id:'physHealthOther',type:'text',label:'If "Other," explain',showIf:a=>a.physHealth==='Other'},
-    {id:'chronic',type:'textarea',label:'Please list any chronic conditions'},
-    {id:'illnesses',type:'textarea',label:'Please list important illnesses, injuries or handicaps'},
+    {id:'chronic',type:'textarea',label:'Please list any chronic conditions, important illnesses, injuries or handicaps'},
     {id:'sleep',type:'text',label:'How much restful sleep do you generally get at night?'},
   ]},
   {tag:'Health Information', fields:[
@@ -285,7 +273,6 @@ const STEPS = [
   {tag:'Spiritual', fields:[
     {id:'believeGod',type:'radio',label:'Do you believe in God?',options:['Yes','No','Unsure']},
     {id:'christian',type:'radio',label:'Are you a Christian?',options:['Yes','No','Unsure']},
-    {id:'baptized',type:'radio',label:'Have you ever been baptized?',options:['Yes','No']},
     {id:'pray',type:'radio',label:'Do you pray?',options:SCALE},
     {id:'readBible',type:'radio',label:'How often do you read the Bible?',options:SCALE},
   ]},
@@ -296,7 +283,6 @@ const STEPS = [
 
   {tag:'Money & time', fields:[
     {id:'debt',type:'radio',label:'Do you have significant debt?',options:['Yes','No']},
-    {id:'debtAreas',type:'checkbox',label:'Do you have any significant debt in the following areas?',options:['Mortgage','Car','Credit cards','Student loans','Medical','Other'],showIf:a=>a.debt==='Yes'},
     {id:'debtAmount',type:'text',label:'If yes, about how much?',showIf:a=>a.debt==='Yes'},
     {id:'moneyStruggle',type:'radio',label:'Is money a source of struggle in your life?',options:['Yes','No']},
     {id:'hrsGames',type:'number',label:'On an average day, hours spent on games?',short:true},

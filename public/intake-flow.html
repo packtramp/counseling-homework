@@ -42,17 +42,17 @@ flowchart TD
   SP --> HX
   SPS --> HX
   HX["Original PDI: spouse previously married? ·<br/>ever filed for divorce?"] --> ISSUE
-  ISSUE["WHAT BRINGS YOU HERE<br/>problem · what you've done · how you see yourself &amp; others ·<br/>impact on others · under pressure · fears · what you want ·<br/>Problem Checklist → explain checked boxes"] --> FAM{"Have children?"}
+  ISSUE["WHAT BRINGS YOU HERE<br/>problem · what you've done · what you want · anything else ·<br/>Problem Checklist"] --> FAM{"Have children?"}
   FAM -->|Yes| KIDS["Children: names/ages/genders ·<br/>relationship with your children"]
   FAM -->|No| PAR
   KIDS --> PAR["Relationship with your parents"]
   PAR --> IL["In-laws<br/>(only if ever married)"]
-  IL --> HLTH["HEALTH:<br/>rating · conditions · illnesses/injuries · sleep · physician · meds ·<br/>drugs · alcohol · smoke · upsets ·<br/>seen a counselor? → diagnosis · arrested?"]
+  IL --> HLTH["HEALTH:<br/>rating · conditions/illnesses/injuries · sleep · physician · meds ·<br/>drugs · alcohol · smoke · upsets ·<br/>seen a counselor? → diagnosis · arrested?"]
   HLTH --> CH{"Attend church?"}
   CH -->|Yes| CHY["Which church · member? · times/month"]
   CH -->|No| SPIR
-  CHY --> SPIR["SPIRITUAL:<br/>belief · Christian? · baptized? · pray · Bible ·<br/>recent changes · testimony"]
-  SPIR --> MON["MONEY &amp; TIME:<br/>debt → which areas · how much · money a struggle? ·<br/>hrs on games / internet / social"]
+  CHY --> SPIR["SPIRITUAL:<br/>belief · Christian? · pray · Bible ·<br/>recent changes · testimony"]
+  SPIR --> MON["MONEY &amp; TIME:<br/>debt → how much · money a struggle? ·<br/>hrs on games / internet / social"]
   MON --> DONE(["Review → Submit"])
       </pre>
     </div>
