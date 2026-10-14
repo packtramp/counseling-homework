@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intake Logic Flowchart</title>
+<style>
+  :root{--bg:#f3f5f1;--fg:#20302c;--muted:#5d6a65;--accent:#0b4d42;--line:#dfe5df;--surface:#fff}
+  @media (prefers-color-scheme:dark){:root{--bg:#131816;--fg:#e7ece9;--muted:#9aa8a2;--accent:#8fe0d1;--line:#2a322e;--surface:#1b2220;color-scheme:dark}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:"Source Sans 3",system-ui,Segoe UI,Roboto,sans-serif;line-height:1.5}
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 80px}
+  h1{font-family:Spectral,Georgia,serif;font-size:1.7rem;margin:0 0 4px}
+  p.lede{color:var(--muted);margin:0 0 20px;max-width:70ch}
+  .chart{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;overflow-x:auto}
+  .legend{color:var(--muted);font-size:.9rem;margin-top:16px}
+  .legend b{color:var(--fg)}
+  .mermaid{display:flex;justify-content:center;min-width:680px}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@600&family=Source+Sans+3:wght@400;600&display=swap">
+</head>
+<body>
+  <div class="wrap">
+    <h1>Counseling Intake — branching logic</h1>
+    <p><a href="/intake">← back to the intake preview</a></p>
+    <p class="lede">How the wizard decides what to ask. Diamonds are decisions driven by an answer; everyone
+      flows through the common sections (Issue → Family → Health → Spiritual → Money) at the bottom.</p>
+    <div class="chart">
+      <pre class="mermaid">
+flowchart TD
+  A["Name · Age · Address · Occupation · Sex"] --> B["Marital status<br/>Single · Dating · Married · Separated · Divorced · Widowed"]
+  B -->|Divorced / Widowed| DW["When did it happen? · what happened? ·<br/>how many times married?"]
+  DW --> ISSUE
+  B -->|Single / Dating / Married / Separated| HB["Have you ever been… (check all)<br/>Single (never married): just “Have you ever been engaged?”<br/>Dating: Engaged · Divorced · Widowed · None<br/>Married: Separated · Divorced · Widowed · None<br/>Separated: Divorced · Widowed · None"]
+  HB --> HQ["For EACH box checked: when? · what happened?<br/>Single / Dating: + how many times? (each)<br/>Married + Divorced or Widowed checked: how many times married?<br/>Separated (ALWAYS): times separated · when · what happened · times married"]
+  HQ --> S{"Status now?"}
+  S -->|Single| ISSUE
+  S -->|Dating| P["The person you're dating:<br/>name · willing to come? · in favor of you coming?"]
+  S -->|Married| SP["Spouse (original PDI wording):<br/>name · willing to come? · in favor of you coming? ·<br/>years married · how you met · contact · may we contact?"]
+  S -->|Separated| SPS["Spouse (same as Married)<br/>+ living together?"]
+  P --> ISSUE
+  SP --> HX
+  SPS --> HX
+  HX["Original PDI: spouse previously married? ·<br/>ever filed for divorce?"] --> ISSUE
+  ISSUE["WHAT BRINGS YOU HERE<br/>problem · what you've done · how you see yourself &amp; others ·<br/>impact on others · under pressure · fears · what you want ·<br/>Problem Checklist → explain checked boxes"] --> FAM{"Have children?"}
+  FAM -->|Yes| KIDS["Children: names/ages/genders ·<br/>relationship with your children"]
+  FAM -->|No| PAR
+  KIDS --> PAR["Relationship with your parents"]
+  PAR --> IL["In-laws<br/>(only if ever married)"]
+  IL --> HLTH["HEALTH:<br/>rating · conditions · illnesses/injuries · sleep · physician · meds ·<br/>drugs · alcohol · smoke · upsets ·<br/>seen a counselor? → diagnosis · arrested?"]
+  HLTH --> CH{"Attend church?"}
+  CH -->|Yes| CHY["Which church · member? · times/month"]
+  CH -->|No| SPIR
+  CHY --> SPIR["SPIRITUAL:<br/>belief · Christian? · baptized? · pray · Bible ·<br/>recent changes · testimony"]
+  SPIR --> MON["MONEY &amp; TIME:<br/>debt → which areas · how much · money a struggle? ·<br/>hrs on games / internet / social"]
+  MON --> DONE(["Review → Submit"])
+      </pre>
+    </div>
+    <p class="legend">Everyone answers "Have you ever been" right after status. Only people with a current partner (Dating, Married, Separated) get partner/spouse questions.
+      &nbsp; Questions marked optional elsewhere still show here but aren't required.</p>
+  </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<script>
+  const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({startOnLoad:true, theme: dark?'dark':'neutral', flowchart:{useMaxWidth:true, htmlLabels:true, nodeSpacing:40, rankSpacing:48}});
+</script>
+</body>
+</html>
