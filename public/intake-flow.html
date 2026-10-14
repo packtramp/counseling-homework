@@ -28,7 +28,7 @@
     <div class="chart">
       <pre class="mermaid">
 flowchart TD
-  A["Name · Age · Address · Occupation · Sex"] --> B["Marital status<br/>Single · Dating · Married · Separated · Divorced · Widowed"]
+  A["Name · Age · Sex · Referred by ·<br/>Address · Occupation"] --> B["Marital status<br/>Single · Dating · Married · Separated · Divorced · Widowed"]
   B -->|Divorced / Widowed| DW["When did it happen? · what happened? ·<br/>how many times married?"]
   DW --> ISSUE
   B -->|Single / Dating / Married / Separated| HB["Have you ever been… (check all)<br/>Single (never married): just “Have you ever been engaged?”<br/>Dating: Engaged · Divorced · Widowed · None<br/>Married: Separated · Divorced · Widowed · None<br/>Separated: Divorced · Widowed · None"]
