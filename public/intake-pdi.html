@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GCC Counseling Intake — Preview</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --bg:#f3f5f1; --surface:#fff; --fg:#20302c; --muted:#5d6a65; --line:#dfe5df;
+    --accent:#0f6b5c; --accent-ink:#0b4d42; --accent-soft:#e2efeb; --focus:#0f6b5c;
+    --sand:#8a5d00; --sand-bg:#f8efd8;
+    --shadow:0 1px 2px rgba(20,40,35,.05),0 6px 24px rgba(20,40,35,.07);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#131816;--surface:#1b2220;--fg:#e7ece9;--muted:#9aa8a2;--line:#2a322e;
+      --accent:#58cdb8;--accent-ink:#8fe0d1;--accent-soft:#163029;--focus:#58cdb8;
+      --sand:#e0b767;--sand-bg:#33280f;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.3);color-scheme:dark;}
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:"Source Sans 3",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5;
+    display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+  .sandbanner{background:var(--sand-bg);color:var(--sand);font-size:.8rem;font-weight:600;
+    text-align:center;padding:6px 14px;letter-spacing:.02em}
+  .progress{height:5px;background:var(--line);flex:0 0 auto}
+  .progress > i{display:block;height:100%;width:0;background:var(--accent);transition:width .35s ease}
+  main{flex:1;display:flex;justify-content:center;align-items:flex-start;padding:26px 18px 120px}
+  .card{width:100%;max-width:600px;margin-block:auto}
+  .step-tag{font-family:Spectral,serif;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent-ink);font-weight:600;margin:0 0 14px}
+  .q{margin:0 0 42px}
+  .q:last-child{margin-bottom:0}
+  label.qlabel{display:block;font-family:Spectral,Georgia,serif;font-size:1.32rem;font-weight:600;
+    letter-spacing:-.01em;margin:0 0 4px;text-wrap:balance}
+  .req{color:var(--accent);font-size:1rem}
+  .help{color:var(--muted);font-size:.92rem;margin:0 0 12px}
+  input[type=text],input[type=number],input[type=tel],input[type=email],textarea,select{
+    width:100%;font:inherit;font-size:1.05rem;color:var(--fg);background:var(--surface);
+    border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;margin-top:6px}
+  textarea{min-height:150px;resize:vertical}
+  input.short{max-width:200px}
+  input:focus,textarea:focus,select:focus,.opt:focus-visible{outline:none;border-color:var(--focus);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+  .opts{display:flex;flex-direction:column;gap:9px;margin-top:8px}
+  .opts.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px}
+  .opt{font:inherit;font-size:1.02rem;text-align:left;color:var(--fg);background:var(--surface);
+    border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;
+    display:flex;align-items:center;gap:10px;transition:border-color .12s,background .12s}
+  .opt:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+  .opt .box{flex:0 0 auto;width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line);
+    display:grid;place-items:center;font-size:.8rem;color:#fff}
+  .opt.radio .box{border-radius:50%}
+  .opt.on{border-color:var(--accent);background:var(--accent-soft)}
+  .opt.on .box{background:var(--accent);border-color:var(--accent)}
+  h1.welcome{font-family:Spectral,serif;font-size:1.9rem;font-weight:600;margin:0 0 10px;text-wrap:balance}
+  .welcome-lede{color:var(--muted);font-size:1.05rem;margin:0 0 6px}
+  .nav{position:fixed;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--bg) 86%,transparent);
+    backdrop-filter:blur(8px);border-top:1px solid var(--line);
+    padding:14px 18px;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));
+    display:flex;justify-content:center;gap:12px}
+  .nav-inner{width:100%;max-width:600px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+  button.btn{font:inherit;font-weight:600;font-size:1rem;border-radius:12px;padding:12px 26px;cursor:pointer;border:1.5px solid transparent}
+  .btn.primary{background:var(--accent);color:#fff}
+  .btn.primary:hover{background:var(--accent-ink)}
+  .btn.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
+  .btn.ghost:hover{color:var(--fg)}
+  .btn[disabled]{opacity:.4;cursor:not-allowed}
+  .count{color:var(--muted);font-size:.86rem;font-variant-numeric:tabular-nums}
+  /* review */
+  .rev h2{font-family:Spectral,serif;font-size:1.5rem;margin:0 0 4px}
+  .rev-sec{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
+  .rev-sec h3{font-size:.76rem;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-ink);margin:0 0 8px}
+  .rev-row{display:flex;gap:12px;padding:5px 0;font-size:.98rem}
+  .rev-row .k{color:var(--muted);flex:0 0 46%;min-width:0}
+  .rev-row .v{flex:1;min-width:0;font-weight:500;overflow-wrap:anywhere}
+  .done{text-align:center;padding-top:34px}
+  .done .big{font-family:Spectral,serif;font-size:1.8rem;margin:14px 0 6px}
+  .check{width:64px;height:64px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
+    display:grid;place-items:center;margin:0 auto;font-size:2rem}
+  .link{background:none;border:none;color:var(--accent-ink);font:inherit;text-decoration:underline;cursor:pointer;padding:0}
+</style>
+</head>
+<body>
+  <div class="sandbanner">PREVIEW for review · nothing is sent or saved anywhere but this browser · <a href="/intake/flow" style="color:inherit">how it decides</a> · <a href="#" style="color:inherit" onclick="try{localStorage.removeItem(KEY);localStorage.removeItem(KEY+`-i`)}catch(e){};location.reload();return false">start over</a></div>
+  <div class="progress"><i id="bar"></i></div>
+  <main><div class="card" id="card"></div></main>
+  <div class="nav"><div class="nav-inner">
+    <button class="btn ghost" id="back">Back</button>
+    <span class="count" id="count"></span>
+    <button class="btn primary" id="next">Continue</button>
+  </div></div>
+
+<script>
+/* ---------- gates ---------- */
+const married    = a => a.marital === 'Married';
+const sep        = a => a.marital === 'Separated';
+const hasSpouse  = a => married(a) || sep(a);        // still married legally → still has a spouse
+const dating     = a => a.marital === 'Dating';
+const single     = a => a.marital === 'Single';
+const divWid     = a => a.marital === 'Divorced' || a.marital === 'Widowed';  // straight to when / what / times married (Roby 10/14)   // Single = NEVER married (Roby 10/14); married-then-not picks Divorced/Widowed
+const everMar    = a => ['Married','Separated','Divorced','Widowed'].includes(a.marital);
+const hasKids    = a => a.children === 'Yes';
+const inc        = (a,k,v) => Array.isArray(a[k]) && a[k].includes(v);
+
+const SCALE = ['Never','Once a month','Once a week','Multiple times a week','Daily'];
+/* Fields NOT required (everything else shows a *). Flip any of these as we decide. */
+const OPTIONAL = new Set(['occupation','partnerName','anythingElse','spouseCell','spouseEmail','dateOfMarriage',
+ 'spouseWillingWhy','chronic','sleep','pcp','lastExam','examResults','upsets','medicationWhat','drugsExplain',
+ 'dsm','arrestedExplain','physHealthOther','denom','attendance','religiousChanges','testimony',
+ 'hrsGames','hrsInternet','hrsSocial','checklistOther']);
+const reqMark = f => OPTIONAL.has(f.id) ? '' : ' <span class="req">*</span>';
+
+const CHECKLIST = ['Abuse','Anger','Anxiety','Apathy','Bitterness','Children','Communication','Conflict',
+ 'Contentment','Deception','Decision Making','Depression','Drunkenness','Eating/Food','Envy','Fear',
+ 'Finances','Gambling','Guilt','Health','Laziness','Loneliness','Marriage','Memory/Confusion','Moodiness',
+ 'Parenting','Perfectionism','Purity','Rebellion','Sadness','Self-Control','Self-Image','Self-Injury',
+ 'Sex','Sexual Sin','Suicide (thoughts of)','Time Wasting','Other'];
+
+/* ---------- schema ---------- */
+const STEPS = [
+  {special:'welcome'},
+  {tag:'Personal Identification', fields:[
+    {id:'name',type:'text',label:'Name',help:'Your counselor already entered this — just check it.',value:'Jane Doe (example)'},
+    {id:'age',type:'number',label:'Age',short:true},
+    {id:'sex',type:'radio',label:'Sex',options:['Male','Female']},
+    {id:'referredBy',type:'text',label:'Referred here by'},
+  ]},
+  {tag:'Personal Identification', fields:[
+    {id:'address',type:'text',label:'Address'},
+    {id:'state',type:'text',label:'State'},
+    {id:'zip',type:'text',label:'Zip'},
+    {id:'occupation',type:'text',label:'Occupation',help:'Optional.'},
+  ]},
+  {tag:'Personal Identification', fields:[
+    {id:'marital',type:'radio',label:'Marital Status',options:['Single','Dating','Married','Separated','Divorced','Widowed'],help:'This decides what we ask next.'},
+  ]},
+  // Roby 10/14: EVERY status answers "Have you ever been" first; each box checked gets how many / when / what happened.
+  {tag:'Relationship history', fields:[
+    // Married (Roby 10/14): Separated · Divorced · Widowed - no Engaged (they obviously were).
+    {id:'everEngaged',type:'radio',label:'Have you ever been engaged?',options:['Yes','No'],help:'An engagement that ended without a wedding.',showIf:single},
+    {id:'everBeen',type:'checkbox',label:'Have you ever been… (check all that apply)',showIf:a=>!single(a)&&!divWid(a),
+     options:a=>married(a)?['Separated','Divorced','Widowed','None of these']:sep(a)?['Divorced','Widowed','None of these']:['Engaged','Divorced','Widowed','None of these'],
+     help:a=>(married(a)||sep(a))?'':'"Engaged" here means an engagement that ended without a wedding.'},
+  ]},
+  {tag:'Relationship history', showIf:a=>inc(a,'everBeen','Separated'), fields:[
+    {id:'everSepWhen',type:'text',label:'Separated — when?'},
+    {id:'everSepWhat',type:'textarea',label:'What happened?'},
+  ]},
+  {tag:'Relationship history', showIf:a=>single(a)?a.everEngaged==='Yes':(!divWid(a)&&inc(a,'everBeen','Engaged')), fields:[
+    {id:'engagedWhen',type:'text',label:'Engaged — when?'},
+    {id:'engagedWhat',type:'textarea',label:'What happened?'},
+    {id:'engagedCount',type:'number',label:'How many engagements ended without a wedding?',short:true},
+  ]},
+  {tag:'Relationship history', showIf:divWid, fields:[
+    {id:'dwWhen',type:'text',label:a=>a.marital==='Widowed'?'When did your spouse pass away?':'When did your divorce happen?'},
+    {id:'dwWhat',type:'textarea',label:'What happened?'},
+    {id:'timesMarriedDW',type:'number',label:'How many times have you been married?',short:true},
+  ]},
+  {tag:'Relationship history', showIf:a=>!single(a)&&!divWid(a)&&inc(a,'everBeen','Divorced'), fields:[
+    {id:'divorcedWhen',type:'text',label:'Divorced — when?'},
+    {id:'divorcedWhat',type:'textarea',label:'What happened?'},
+    {id:'divorcedCount',type:'number',label:'How many divorces?',short:true,showIf:a=>!married(a)&&!sep(a)},
+  ]},
+  {tag:'Relationship history', showIf:a=>!single(a)&&!divWid(a)&&inc(a,'everBeen','Widowed'), fields:[
+    {id:'widowedWhen',type:'text',label:'Widowed — when?'},
+    {id:'widowedWhat',type:'textarea',label:'What happened?'},
+    {id:'widowedCount',type:'number',label:'How many times have you lost a spouse?',short:true,showIf:a=>!married(a)&&!sep(a)},
+  ]},
+  // Separated (Roby 10/14): ALWAYS asked, whatever they checked - this separation + times married.
+  {tag:'Separation', showIf:sep, fields:[
+    {id:'sepTimes',type:'number',label:'How many times have you been separated?',short:true},
+    {id:'sepWhen',type:'text',label:'When did this separation happen?'},
+    {id:'sepWhat',type:'textarea',label:'What happened?'},
+    {id:'timesMarriedSep',type:'number',label:'How many times have you been married (counting this marriage)?',short:true},
+  ]},
+  {tag:'Relationship history', showIf:a=>married(a)&&(inc(a,'everBeen','Divorced')||inc(a,'everBeen','Widowed')), fields:[
+    {id:'timesMarried',type:'number',label:'How many times have you been married (counting this marriage)?',short:true},
+  ]},
+  {tag:'Relationship', showIf:dating, fields:[
+    {id:'partnerName',type:'text',label:"The person you're dating — their name"},
+    {id:'partnerWilling',type:'radio',label:'Is the person you’re dating willing to come for counseling?',options:['Yes','No','Uncertain']},
+    {id:'partnerFavor',type:'radio',label:'Are they in favor of your coming?',options:['Yes','No','Uncertain']},
+  ]},
+  {tag:'Marriage & Family Information', showIf:hasSpouse, fields:[
+    {id:'spouseName',type:'text',label:'Spouse'},
+    {id:'spouseWilling',type:'radio',label:'Is your spouse willing to come for counseling?',options:['Yes','No','Uncertain','Not applicable']},
+    {id:'spouseWillingWhy',type:'text',label:'If no or uncertain, explain',showIf:a=>['No','Uncertain'].includes(a.spouseWilling)},
+    {id:'spouseFavor',type:'radio',label:'Is your spouse in favor of your coming?',options:['Yes','No','Uncertain']},
+  ]},
+  {tag:'Marriage & Family Information', showIf:hasSpouse, fields:[
+    {id:'yearsMarried',type:'number',label:'How many years have you been married?',short:true},
+    {id:'howMet',type:'textarea',label:'Briefly describe how you two met and your dating experience',help:'Where you met — a club, church, school — helps us understand the story.'},
+  ]},
+  {tag:'Separation', showIf:sep, fields:[
+    {id:'livingTogether',type:'radio',label:'Are you currently living together?',options:['Yes','No']},
+  ]},
+  {tag:'Marriage & Family Information', showIf:hasSpouse, fields:[
+    {id:'spouseCell',type:'tel',label:"Spouse's cell phone"},
+    {id:'spouseEmail',type:'email',label:"Spouse's email"},
+    {id:'dateOfMarriage',type:'text',label:'Date of marriage'},
+    {id:'mayContactSpouse',type:'radio',label:'May we contact your spouse for more context?',options:['Yes','No']},
+  ]},
+  // Roby 10/14: NO generic "married before?" gate after status - married/separated/divorced/widowed
+  // obviously have been. Status goes straight to its own questions; the OG PDI marriage-history
+  // questions only make sense with a CURRENT spouse.
+  {tag:'Marriage history', showIf:hasSpouse, fields:[
+    {id:'spousePrevMarried',type:'radio',label:'Has your spouse been previously married?',options:['Yes','No']},
+    {id:'everSeparated',type:'radio',label:'Have the two of you ever been separated?',options:['Yes','No'],showIf:a=>!sep(a)&&!married(a)},
+    {id:'everDivorceFiled',type:'radio',label:'Have you or your spouse ever filed for divorce?',options:['Yes','No']},
+  ]},
+
+  {tag:'What brings you here', fields:[
+    {id:'problem',type:'textarea',label:'What is your problem? (What brings you here?)'},
+    {id:'doneAbout',type:'textarea',label:'What have you done about the problem?'},
+  ]},
+  {tag:'What brings you here', fields:[
+    {id:'wantUsToDo',type:'textarea',label:'What do you want us to do?'},
+    {id:'anythingElse',type:'textarea',label:'Is there any other information we should know?',help:'Optional.'},
+  ]},
+  {tag:'What brings you here', fields:[
+    {id:'checklist',type:'checkbox',label:'Problem Checklist — select all that apply',options:CHECKLIST,grid:true},
+    {id:'checklistOther',type:'text',label:'If "Other," explain',showIf:a=>inc(a,'checklist','Other')},
+  ]},
+
+  {tag:'Family', fields:[
+    {id:'children',type:'radio',label:'Do you have any children?',options:['Yes','No']},
+    {id:'childrenList',type:'textarea',label:'Please list names, ages, and genders',help:'Note if any are married, deceased, or from another relationship.',showIf:hasKids},
+    {id:'relChildren',type:'textarea',label:'Describe your relationship with your children',showIf:hasKids},
+  ]},
+  {tag:'Family', fields:[
+    {id:'relParents',type:'textarea',label:'Describe your relationship with your parents'},
+    {id:'relInLaws',type:'textarea',label:'Describe your relationship with your in-laws',showIf:everMar},
+  ]},
+
+  {tag:'Health Information', fields:[
+    {id:'physHealth',type:'radio',label:'How would you rate your physical health?',options:['Very Good','Average','Declining','Other']},
+    {id:'physHealthOther',type:'text',label:'If "Other," explain',showIf:a=>a.physHealth==='Other'},
+    {id:'chronic',type:'textarea',label:'Please list any chronic conditions, important illnesses, injuries or handicaps'},
+    {id:'sleep',type:'text',label:'How much restful sleep do you generally get at night?'},
+  ]},
+  {tag:'Health Information', fields:[
+    {id:'pcp',type:'text',label:"Primary care physician's name and address"},
+    {id:'lastExam',type:'text',label:'Date of last medical examination'},
+    {id:'examResults',type:'text',label:'Results'},
+  ]},
+  {tag:'Health Information', fields:[
+    {id:'medication',type:'radio',label:'Are you presently taking medication?',options:['Yes','No']},
+    {id:'medicationWhat',type:'textarea',label:'Which medication(s), and the reason?',showIf:a=>a.medication==='Yes'},
+    {id:'drugs',type:'radio',label:'Have you ever used drugs for anything other than medical purposes?',options:['Yes','No']},
+    {id:'drugsExplain',type:'text',label:'Please explain',showIf:a=>a.drugs==='Yes'},
+    {id:'alcohol',type:'text',label:'Do you drink alcoholic beverages? How often and how much?'},
+    {id:'smoke',type:'text',label:'Do you smoke? How often and how much?'},
+  ]},
+  {tag:'Health Information', fields:[
+    {id:'upsets',type:'textarea',label:"Briefly describe any severe emotional upsets you've had"},
+    {id:'seenCounselor',type:'radio',label:'Have you ever seen a psychiatrist or counselor?',options:['Yes','No']},
+    {id:'dsm',type:'text',label:'Any diagnosis given? And the date of your last visit?',showIf:a=>a.seenCounselor==='Yes'},
+    {id:'arrested',type:'radio',label:'Have you ever been arrested?',options:['Yes','No']},
+    {id:'arrestedExplain',type:'text',label:'Please explain',showIf:a=>a.arrested==='Yes'},
+  ]},
+
+  {tag:'Spiritual', fields:[
+    {id:'denom',type:'text',label:'Denominational preference',help:'Optional.'},
+    {id:'attendChurch',type:'radio',label:'Do you attend church?',options:['Yes','No']},
+    {id:'attendChurchWhich',type:'text',label:'Which church do you attend?',showIf:a=>a.attendChurch==='Yes'},
+    {id:'isMember',type:'radio',label:'Are you a member?',options:['Yes','No'],showIf:a=>a.attendChurch==='Yes'},
+    {id:'attendance',type:'radio',label:'Church attendance per month',options:['0','1','2','3','4','5','6','7','8','9','10+'],grid:true,showIf:a=>a.attendChurch==='Yes'},
+  ]},
+  {tag:'Spiritual', fields:[
+    {id:'believeGod',type:'radio',label:'Do you believe in God?',options:['Yes','No','Unsure']},
+    {id:'christian',type:'radio',label:'Are you a Christian?',options:['Yes','No','Unsure']},
+    {id:'pray',type:'radio',label:'Do you pray?',options:SCALE},
+    {id:'readBible',type:'radio',label:'How often do you read the Bible?',options:SCALE},
+  ]},
+  {tag:'Spiritual', fields:[
+    {id:'religiousChanges',type:'textarea',label:'Explain recent changes in your religious life, if any'},
+    {id:'testimony',type:'textarea',label:'Briefly, your testimony of salvation',help:'Optional.'},
+  ]},
+
+  {tag:'Money & time', fields:[
+    {id:'debt',type:'radio',label:'Do you have significant debt?',options:['Yes','No']},
+    {id:'debtAmount',type:'text',label:'If yes, about how much?',showIf:a=>a.debt==='Yes'},
+    {id:'moneyStruggle',type:'radio',label:'Is money a source of struggle in your life?',options:['Yes','No']},
+    {id:'hrsGames',type:'number',label:'On an average day, hours spent on games?',short:true},
+    {id:'hrsInternet',type:'number',label:'…on the internet?',short:true},
+    {id:'hrsSocial',type:'number',label:'…on social media?',short:true},
+  ]},
+
+  {special:'review'},
+  {special:'done'},
+];
+
+/* ---------- state ---------- */
+const KEY='gcc-intake-sandbox';
+let answers={}, i=0;
+try{answers=JSON.parse(localStorage.getItem(KEY))||{};}catch(e){answers={};}
+try{const si=parseInt(localStorage.getItem(KEY+'-i'));if(!isNaN(si))i=si;}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(answers));localStorage.setItem(KEY+'-i',i);}catch(e){}}
+
+/* visible steps */
+const vis = ()=>STEPS.filter(s=>!s.showIf||s.showIf(answers));
+function clampIndex(){const v=vis();if(i>=STEPS.length)i=STEPS.length-1;
+  // move i to nearest visible
+  while(i>0 && STEPS[i].showIf && !STEPS[i].showIf(answers))i--;}
+
+const card=document.getElementById('card'), bar=document.getElementById('bar'),
+      backBtn=document.getElementById('back'), nextBtn=document.getElementById('next'),
+      countEl=document.getElementById('count');
+
+function fieldVisible(f){return !f.showIf||f.showIf(answers);}
+
+function render(){
+  clampIndex();
+  const step=STEPS[i];
+  const v=vis(); const vIndex=v.indexOf(step);
+  bar.style.width = step.special==='welcome'?'4%' : ((vIndex)/(v.length-1)*100)+'%';
+  card.innerHTML='';
+
+  if(step.special==='welcome'){
+    card.innerHTML=`<p class="step-tag">Grace Community Church · Counseling</p>
+      <h1 class="welcome">Let's start with your story.</h1>
+      <p class="welcome-lede">A few questions so your counselor can help well. It only asks what applies to
+      you, and it saves as you go — you can stop and come back anytime.</p>
+      <p class="welcome-lede" style="font-size:.95rem">Takes about 8–12 minutes.</p>`;
+    backBtn.style.visibility='hidden'; nextBtn.textContent='Begin'; countEl.textContent='';
+    return;
+  }
+  if(step.special==='review'){ renderReview(); backBtn.style.visibility='visible';
+    nextBtn.textContent='Submit'; countEl.textContent=''; return; }
+  if(step.special==='done'){
+    card.innerHTML=`<div class="done"><div class="check">✓</div>
+      <p class="big">Thank you, ${esc(answers.name||'friend')}.</p>
+      <p class="welcome-lede">Your counselor has what they need to get started. They'll be in touch.</p>
+      <p class="welcome-lede" style="font-size:.9rem;margin-top:18px">
+      <button class="link" id="restart">Start over (sandbox)</button></p></div>`;
+    backBtn.style.visibility='hidden'; nextBtn.style.visibility='hidden'; countEl.textContent='';
+    document.getElementById('restart').onclick=()=>{answers={};i=0;save();nextBtn.style.visibility='visible';render();};
+    return;
+  }
+
+  nextBtn.style.visibility='visible';
+  backBtn.style.visibility = vIndex>0 ? 'visible':'hidden';
+  nextBtn.textContent='Continue';
+  countEl.textContent=`${vIndex} of ${v.length-2}`;
+  if(step.tag) card.insertAdjacentHTML('beforeend',`<p class="step-tag">${esc(step.tag)}</p>`);
+
+  step.fields.filter(fieldVisible).forEach(f=>{
+    const wrap=document.createElement('div'); wrap.className='q';
+    const Hlp = typeof f.help==='function' ? f.help(answers) : f.help;
+    const opt = (Hlp?`<p class="help">${esc(Hlp)}</p>`:'');
+    const L = typeof f.label==='function' ? f.label(answers) : f.label;
+    if(f.type==='textarea'){
+      wrap.innerHTML=`<label class="qlabel" for="${f.id}">${esc(L)}${reqMark(f)}</label>${opt}
+        <textarea id="${f.id}">${esc(answers[f.id]||'')}</textarea>`;
+      wrap.querySelector('textarea').oninput=e=>{answers[f.id]=e.target.value;save();};
+    } else if(f.type==='radio'||f.type==='checkbox'){
+      const multi=f.type==='checkbox';
+      const cur=answers[f.id]|| (multi?[]:'');
+      wrap.innerHTML=`<label class="qlabel">${esc(L)}${reqMark(f)}</label>${opt}
+        <div class="opts ${f.grid?'grid':''}"></div>`;
+      const box=wrap.querySelector('.opts');
+      const optsList = typeof f.options==='function' ? f.options(answers) : f.options;
+      optsList.forEach(o=>{
+        const on = multi ? cur.includes(o) : cur===o;
+        const b=document.createElement('button');
+        b.type='button'; b.className='opt '+(multi?'':'radio')+(on?' on':'');
+        b.innerHTML=`<span class="box">${on?(multi?'✓':'●'):''}</span><span>${esc(o)}</span>`;
+        b.onclick=()=>{
+          if(multi){let arr=answers[f.id]||[];arr=arr.includes(o)?arr.filter(x=>x!==o):arr.concat(o);
+            // "None of these" is exclusive: picking it clears the others, picking any other clears it.
+            if(o==='None of these'&&arr.includes(o)) arr=[o]; else if(o!=='None of these') arr=arr.filter(x=>x!=='None of these');
+            answers[f.id]=arr;}
+          else{answers[f.id]=o;}
+          save(); render();
+        };
+        box.appendChild(b);
+      });
+    } else {
+      wrap.innerHTML=`<label class="qlabel" for="${f.id}">${esc(L)}${reqMark(f)}</label>${opt}
+        <input id="${f.id}" class="${f.short?'short':''}" type="${f.type}" value="${esc(answers[f.id]!=null?answers[f.id]:(f.value&&!answers.hasOwnProperty(f.id)?f.value:''))}">`;
+      const inp=wrap.querySelector('input');
+      if(f.value&&!answers.hasOwnProperty(f.id)){answers[f.id]=f.value;}
+      inp.oninput=e=>{answers[f.id]=e.target.value;save();};
+    }
+    card.appendChild(wrap);
+  });
+}
+
+function renderReview(){
+  const groups={};
+  STEPS.forEach(s=>{ if(!s.fields)return; if(s.showIf&&!s.showIf(answers))return;
+    s.fields.filter(fieldVisible).forEach(f=>{
+      const val=answers[f.id]; if(val==null||val===''||(Array.isArray(val)&&!val.length))return;
+      (groups[s.tag]=groups[s.tag]||[]).push([typeof f.label==='function'?f.label(answers):f.label, Array.isArray(val)?val.join(', '):val]);
+    });
+  });
+  let html=`<div class="rev"><p class="step-tag">Last step</p><h2>Does this look right?</h2>
+    <p class="help">This is what your counselor will see. You can go Back to fix anything.</p>`;
+  Object.keys(groups).forEach(g=>{
+    html+=`<div class="rev-sec"><h3>${esc(g)}</h3>`;
+    groups[g].forEach(([k,v])=>html+=`<div class="rev-row"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`);
+    html+=`</div>`;
+  });
+  html+=`</div>`;
+  card.innerHTML=html;
+}
+
+function go(dir){
+  const step=STEPS[i];
+  if(dir>0 && step.special==='review'){ i=STEPS.length-1; save(); render(); window.scrollTo(0,0); return; }
+  let j=i;
+  do{ j+=dir; }while(j>0 && j<STEPS.length-1 && STEPS[j].showIf && !STEPS[j].showIf(answers));
+  j=Math.max(0,Math.min(STEPS.length-1,j));
+  i=j; save(); render(); window.scrollTo(0,0);
+}
+nextBtn.onclick=()=>go(1);
+backBtn.onclick=()=>go(-1);
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName!=='TEXTAREA'){e.preventDefault();go(1);}});
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+render();
+</script>
+</body>
+</html>

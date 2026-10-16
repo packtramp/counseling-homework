@@ -21,6 +21,10 @@
       "destination": "/intake-flow.html"
     },
     {
+      "source": "/intake/pdi",
+      "destination": "/intake-pdi.html"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/"
     }
